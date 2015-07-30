@@ -7,55 +7,61 @@ class TPClient(object):
     self.requester = requester
     self.auth = auth
 
-  def request(self,url,verb='get',*args,**kwargs):
+  def query(self,entity_id,entity_type,mode='query',**kwargs):
+    'convert args to TP URL'
+    url_args = ",".join(
+      ["{}={}".format(k,v) for k,v in kwargs.iteritems()] )
+    final_url = self.BASEURL + "{}/{}/?{}".format(
+          entity_type,entity_id,url_args)
+
+    return self._request(final_url,auth=self.auth)
+
+  def _request(self,url,verb='get',*args,**kwargs):
+    'make request to TP server'
     self.requester(verb,BASEURL+url,auth=self.auth,*args,**kwargs)
 
 
 class Project(object):
+  ENTITIES = [
+    'bugs',
+    'comments',
+    'userstories',
+  ]  
+
   def __init__(self,acid,tp_client):
     self.tp_client = tp_client
     self.project_acid = acid
     self.element_factory = Element
 
-  def __query(self,entity,entity_id,mode='query',**kwargs):
-    # Takes args and creates query object which in turn is fed to tpClient
-    query = Query(entity,entity_id,mode,**kwargs)
-    response = self.tp_client.request(str(query))
-    return self.element_factory.from_json(entity,response)
-
   def __getattr__(self,name):
     'We delegate most of our work to tp_client'
-    return functools.partial(self.__query, entity = name) 
+    if name not in self.ENTITIES: raise AttributeError()
 
-class Query():
-  # Here is where we model query rules 
-  # e.g if No ID, must be in 'create' mode
-  def __new__(cls,*args,**kwargs):
-    if cls.validate(*args,**kwargs):
-      return cls(*args,**kwargs)
-    else:
-      raise Exception()
-
-  def __init__(self,entity,verb
-
-  def __str__(self):
-    return "query as tpurl string"  
-
-  @class_method
-  def validate(self,*args,**kwargs):
-    pass
+    return functools.partial(
+            self.tp_client.query,
+            entity_type = name, acid= self.project_acid) 
 
 
-class Element(object):
-  @staticmethod 
-  def from_json(cls,json):
-    return cls(**parse_json(json))
+class Entity(object):
+  'Factory class for dynamic Entity Instanciation'
 
-  def __new__(cls,element,**kwargs):
-    return new element!!!
+  ENTITY_CLASS_REGISTER={
+    'bug':Bug
+  }
+
+  def __new__(cls,entity,response):
+    'Here we switch based on entity type if known,'
+    'Otherwise just return Generic Element'
+    klass = cls.ENTITY_CLASS_REGISTER.get(entity,Generic)
+    return klass.from_json(response)
 
 
-class ElementBase(object):
+class EntityBase(object):
+  @classmethod 
+  def from_json(cls,entity,json):
+    'Its the Entities responsiblity to decode response'
+    return cls(entity,**parse_json(json))
+
   def __init__(self,client,**kwargs):
     self._client = Client
     self._cache = kwargs
@@ -63,11 +69,18 @@ class ElementBase(object):
   def __getattr__(self,name):
     return self._cache.get('name',None)
 
+class Generic(EntityBase):
+  pass
 
+class Bug(EntityBase):
+  'Here is where we add entity specific methods'
+  def Priority(self):
+    pass # SHOULD BE PROPERTY
 
-
+  def 
 
 if __name__ == "__main__":
+  """
   Bug.create(client,12312)
   Bug(tp,1234).
 
@@ -98,4 +111,4 @@ if __name__ == "__main__":
   # its possible to query items
   Projects.query('bug',filter=ads,order)
 
-   
+  """ 
