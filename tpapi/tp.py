@@ -1,11 +1,27 @@
 import json
-import requests
 import itertools
+import functools 
+import requests
+import entities 
+from collections import namedtuple, OrderedDict
 
 """
 Todo:
-  - Create a bug usign lib
-  - Client caching ??
+  - Commit Entity cacher, branch it off at this point
+  - Tidy up this branch/ remove it 
+  - Project has to take Entity Factory Callback
+  - Default class factory
+  - Make api to return a PROJECT with CLIENT setup
+  - Make inital package setup, import api into package
+  - Move entities list to class factory, move dependancy to api module
+
+  - Tidy up Respnse parser
+  - Docs 
+  - Tests Tests Tests 
+
+  0.2
+  - entity editing
+  - TP client caching
 """
 
 class JsonResponse(object):
@@ -22,136 +38,178 @@ class JsonResponse(object):
 JSON = JsonResponse()
 
 class HTTPRequester(object):
-  """simple  wrapper to encapsulate validation and keep client ignorant"""
+  """simple wrapper around http request"""
   def __init__(self,auth=None):
     self.auth = auth
 
-  def __call__(self,url,params,method='get'):
-    response = requests.request(method,url,params=params,auth=self.auth)
+  def __call__(self, url, method='get', params=None, data=None, auth=None ):
+    import pdb;pdb.set_trace()
+    if method == 'get':
+      response = requests.request(method,url,params=params,auth=auth)
+    if method == 'post':
+      response = requests.request(method,url,params=params,auth=auth,
+                   **self._payload(data))
 
-    if not self.validate(response): raise Exception() # TODO:Better Excep
+    response.raise_for_status()
     return response.content # TODO: What about binary content???
 
-  def validate(self,response):
-    return response.status_code == requests.codes.ok    
+  def _payload(self,data):
+    dump = json.dumps(data)
+    return {
+      'data':dump,
+      'header': {"content-type":"application/json",
+                 "content-length":len(dump)}}
 
+
+class EntityCache(object):
+  def __init__(self,max_entries=1000):
+    self.cache = OrderedDict()
+
+  def update(self,key,val):
+    if self.cache.get(key):
+      self.cache.move_to_end(key)
+    self.cache[key] = val
+    """ TODO 
+    if number is greater than max,
+    truncate to 1000
+    """
+  def get(self,key):
+    return self.cache.get(key) 
+
+"""
+if method=get and url in cache
+  look timestamp
+    if old:
+      make request + update cache time + resp content
+  else: return request cache
+
+request MUST return neutral content
+"""
+class requestCacher(object):
+  def __init__(self,func):
+    self.cache = OrderedDict()
+    self.func = func
+
+  def _getRespTime(self,resp):
+    return datetime.datetime.strptime(resp,
+      '%a, %d %b %Y %H:%M:%S %Z')
+
+  def __call__(self,method,url,*args,**kwargs):
+    result = None
+
+    if method == 'get':
+      if self.cache.get(url)
+        time,val = self.cache.get(url)         
+        if too_old(time):
+          result = self.func(method,url,*args,**kwargs)
+          self.cache[url] = (self._getRespTime(result),result)
+        else:
+          return result = val
+    else:
+      result = self.func(method,url,*args,**kwargs)
+
+    return result
+          
 
 class TPClient(object):
   'Takes questions and puts them to TP'
-  
-  ENTITIES = [
-    'Bugs',
-    'Tags',
-    'Comments',
-    'Userstories',
-  ]  
+  ENTITIES = entities.ALL
+
   def __init__(self, url, auth=None, requester=HTTPRequester):
-
     self.BASEURL = url
-    self.requester = requester(auth)
+    self.requester = functools.partial(requester(),auth=auth)
 
-  def _request(self,method,url,response_parser=JSON,**params):
-    """ base method to make request"""
+  #@timed_cache
+  def __request(self, method, url, data=None,
+              base=True, response_parser=JSON, **params):
+
     params['format'] = str(response_parser)
-    response = response_parser(self.requester(url,params))
-    return response
+    resp = self.requester(
+      url = (self.BASEURL*base) + url ,
+      method = method,
+      params = params, 
+      data = data)
+    return resp
 
-  def _entityUrl(self,entity_type,eid=''):
-    url = '/'.join([self.BASEURL,
-                    entity_type,
-                    str(eid),])
-    return url
+  def request(self,method,url,data=None,limit=50,**params):
+    init = functools.partial(
+                self.__request,
+                method = method,
+                url = url,
+                params = params,
+                data = data)
+    next_f  = functools.partial(self.request,method='get',base=False)
+    return Response(init,next_f,limit)
 
-  def query(self,entity_type,entity_max=50,
-            create=False,edit=False,data=None,**kwargs):
-    """ Makes suitable requests to TP Service based on args passed. 
-    
-    @param entity_type: TP entity to query
-    @param id: (Optional) specific TP entity to query
-    @param entity_max: (Optional) max number of entities returned, default 100
 
-    Operational modes, defaults to query Mode 
-    @param create: (Optional) IF true, create entity
-    @param create: (Optional) If True, edit existing entity
-    """
-    if create and 'Id' in kwargs:
-      raise Exception() # cannot create existing ID
-    if edit and not 'Id' in kwargs:
-      raise Exception() # Must edit existing ID
-    if create and edit: 
-      raise Exception() # Can't edit and create 
-
-    url = self._entityUrl(entity_type,kwargs.pop('id',''))
-    request_method = 'post' if (create or edit) else 'get'
-    view = lambda: self._request('get', url, **kwargs)
-
-    
-    if request_method is 'post': # make request and return view of new elem
-      i = self._request(request_method, url, **kwargs)[0][0]
-      view = lambda: self._request(
-                      'get', self._entityUrl(entity_type,i['Id']))
-
-    # We return an iterator over requested data
-    return ResponseIter(view, lambda url: self._request('get',url),
-                        limit=entity_max) 
-
-class ResponseIter(object):
-  def __init__(self,init_response,next_f,limit):
-
-    self.init_response = init_response
+class Response(object):
+  """ Seamless Iter over Response to a query """
+  def __init__(self,init_f,next_f,limit,parser=JSON):
+    self.parser = parser
+    self.init_response = init_f
     self.limit = limit
-    self.f_next = next_f
+    self.next = next_f
 
   def __iter__(self):
     """Merge result of all rquests as one iterator"""
-    items,url = self.init_response()
-    
-    for i in range((self.limit/len(items))): #TODO: PROPER LIMIT DIV
-      for x in items: yield x
-      if url:
-        items,url = self.f_next(url) # continue 
+    items,url = self.parser(self.init_response())
+    for i in range(max(self.limit/len(items),1)):
+      if i==0: # Special case start 
+        pass # already assigned 
       else:
-        break
-
-  def __getitem__(self,index):
-    if index > self.limit-1: raise Exception
-    if index < 0: index = self.limit - index 
-
-    return [x for x in self][index]
-
+        items,url = self.parser(self.next(url))
+      for x in items:yield x 
 
 class Project(object):
-
-  def __init__(self,acid,tp_client,entity):
-    'todo: enity factory default'
+  """ Projects are Query Factories, setup acid and client
+  """
+  def __init__(self,acid,tp_client):
     self.tp_client = tp_client
     self.project_acid = acid
-    self.entity_factory = entity
 
   def __getattr__(self,name):
-    'We delegate most of our work to tp_client'
     if name not in self.tp_client.ENTITIES:
        raise AttributeError()
-    Entity_class = Entity(name)
+    return Query(self.tp_client,self.project_acid,entity_type=name)
 
-    def get_wrapped_response(*args,**kwargs):
-      'return entity based on query response(name+args)'
-      response = self.tp_client.query(
-                                entity_type = name, 
-                                acid = self.project_acid,
-                                *args, **kwargs )
 
-      return (Entity_class(self,**dct) for dct in response)
+class Query(object):
+  def __init__(self, client, project_acid, entity_type):
+    self.entity_type = entity_type
+    self.entity_class = Entity(self.entity_type)
+    self._project_acid = project_acid
+    self._client = client
 
-    return get_wrapped_response
+  def create(self,**data):
+    resp = self._client.request(
+      method = 'post',
+      url = self.entity_type,
+      data = data,
+      acid = self._project_acid)
+    r = itertools.imap(lambda x :self.entity_class(self._client,**x),r)
+    return self.entity_class(self._client,**(next(r)))
 
+  def query(self,Id='',entity_max=25,**kwargs):
+    r = self._client.request(
+      method = 'get',
+      url = '/'.join([self.entity_type,str(Id)]),
+      acid = self._project_acid,
+      limit=entity_max,
+      **kwargs)
+    r = itertools.imap(lambda x :self.entity_class(self._client,**x),r)
+
+    # If id just return the 1 and only instance, else return iter 
+    if id: return next(r)
+    else: return r 
 
 def Entity(name):
   return  globals().get(name,GenericEntity) 
 
-
 class EntityBase(object):
   def __init__(self,project,**kwargs):
+    if 'Id' not in kwargs:
+      raise Exception() #TODO: Better exception
+
     self._project = project
     self._cache = kwargs
 
@@ -177,20 +235,13 @@ class Bugs(EntityBase):
 
 if __name__ == "__main__":
   """
-  Bug.create(client,12312)
-  Bug(tp,1234).
+  client = TPClient(url,auth)
+  Project = (tp,acid)
 
-  Project(tp,acid)
+  Project.bugs.create(Name,Description)
+  bug = Project.bugs.query(id=12311)
+  bug.Name = "New Name" # editing
 
-  # bugs is a method
-  # it assumes id exists and fetches data
-  Project.bugs('123123')
-  Project.releases('1232')
-  Project.userstories('44234')
-
-  # its possible to create and edit as well as query. In this case,
-  # pass create flag
-  Project.bugs(create=1,Name='New Bug',Description='Blah')
-  Project.bugs(edit=1,id=12312,Name='New Name')
-
+  Project.tags.query()
+  Project.tags.create(Name=Name)
   """ 
