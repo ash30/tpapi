@@ -60,57 +60,6 @@ class HTTPRequester(object):
       'header': {"content-type":"application/json",
                  "content-length":len(dump)}}
 
-
-class EntityCache(object):
-  def __init__(self,max_entries=1000):
-    self.cache = OrderedDict()
-
-  def update(self,key,val):
-    if self.cache.get(key):
-      self.cache.move_to_end(key)
-    self.cache[key] = val
-    """ TODO 
-    if number is greater than max,
-    truncate to 1000
-    """
-  def get(self,key):
-    return self.cache.get(key) 
-
-"""
-if method=get and url in cache
-  look timestamp
-    if old:
-      make request + update cache time + resp content
-  else: return request cache
-
-request MUST return neutral content
-"""
-class requestCacher(object):
-  def __init__(self,func):
-    self.cache = OrderedDict()
-    self.func = func
-
-  def _getRespTime(self,resp):
-    return datetime.datetime.strptime(resp,
-      '%a, %d %b %Y %H:%M:%S %Z')
-
-  def __call__(self,method,url,*args,**kwargs):
-    result = None
-
-    if method == 'get':
-      if self.cache.get(url)
-        time,val = self.cache.get(url)         
-        if too_old(time):
-          result = self.func(method,url,*args,**kwargs)
-          self.cache[url] = (self._getRespTime(result),result)
-        else:
-          return result = val
-    else:
-      result = self.func(method,url,*args,**kwargs)
-
-    return result
-          
-
 class TPClient(object):
   'Takes questions and puts them to TP'
   ENTITIES = entities.ALL
@@ -119,7 +68,6 @@ class TPClient(object):
     self.BASEURL = url
     self.requester = functools.partial(requester(),auth=auth)
 
-  #@timed_cache
   def __request(self, method, url, data=None,
               base=True, response_parser=JSON, **params):
 
