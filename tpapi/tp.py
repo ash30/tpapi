@@ -24,7 +24,7 @@ class TPClient(object):
   'Takes questions and puts them to TP'
   ENTITIES = entities.ALL
 
-  def __init__(self, url, auth=None, requester=HTTPRequester):
+  def __init__(self, url, requester, auth=None):
     self.BASEURL = url
     self.requester = functools.partial(requester(),auth=auth)
 
@@ -96,6 +96,13 @@ class Query(object):
     r = itertools.imap(lambda x :self.entity_class(self._client,**x),r)
     return self.entity_class(self._client,**(next(r)))
 
+  def edit(self,Id,**data):
+    resp = self._client.request(
+      method = 'post',
+      url = '/'.join([self.entity_type,str(Id)]),
+      acid = self._project_acid,
+      data = data)
+
   def query(self,Id='',entity_max=25,**kwargs):
     r = self._client.request(
       method = 'get',
@@ -116,20 +123,20 @@ class EntityBase(object):
   def __init__(self,project,**kwargs):
     if 'Id' not in kwargs:
       raise Exception() #TODO: Better exception
-
     self._project = project
-    self._cache = kwargs
+    # store entity data in instance dict
+    self.__dict__.update(kwargs)
 
-  def __getattr__(self,name):
-    return self._cache.get(name,None)
+  def sync(self):
+    """ post changes made entity to server """
+    entitiy_id = self.Id
+    data = dictfilter(lambda t: t[0].startswith('_'),self.__dict__.iteritems()))
+    getattr(self.project,'Assignables').edit(Id = entitiy_id, data**)
 
   def __repr__(self):
     name = self.__class__.__name__
     return "{}({})".format(name,
-    ",".join("{}={}".format(k,repr(v)) for k,v in self._cache.iteritems()))
-
-  def getComments(self):
-    pass     
+    ",".join("{}={}".format(k,repr(v)) for k,v in self._dict__.iteritems()))
 
 class GenericEntity(EntityBase):
   pass
@@ -141,14 +148,5 @@ class Bugs(EntityBase):
 
 
 if __name__ == "__main__":
-  """
-  client = TPClient(url,auth)
-  Project = (tp,acid)
-
-  Project.bugs.create(Name,Description)
-  bug = Project.bugs.query(id=12311)
-  bug.Name = "New Name" # editing
-
-  Project.tags.query()
-  Project.tags.create(Name=Name)
-  """ 
+  a=EntityBase(project='test',Id=123,p1=1,p2=2,p3=3)
+  print a.p1
