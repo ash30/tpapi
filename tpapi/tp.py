@@ -1,21 +1,17 @@
-import json
 import itertools
 import functools 
-import requests
 import entities 
-from collections import namedtuple, OrderedDict
+import utils
+
+# Respons Formats
+JSON = utils.JsonResponse()
 
 """
 Todo:
-  - Commit Entity cacher, branch it off at this point
-  - Tidy up this branch/ remove it 
   - Project has to take Entity Factory Callback
   - Default class factory
-  - Make api to return a PROJECT with CLIENT setup
-  - Make inital package setup, import api into package
   - Move entities list to class factory, move dependancy to api module
 
-  - Tidy up Respnse parser
   - Docs 
   - Tests Tests Tests 
 
@@ -23,42 +19,6 @@ Todo:
   - entity editing
   - TP client caching
 """
-
-class JsonResponse(object):
-  """Simple wrapper to encapsulate reponse format"""
-  def __call__(self,string):
-    """Parse Response to return iterator of items and optional next url"""
-    d = json.loads(string)
-    return (d.get('Items',(d,)),d.get('Next'))
-  def __str__(self):
-    """String to supply to request format arg"""
-    return 'json'
-
-# Default Response Parser
-JSON = JsonResponse()
-
-class HTTPRequester(object):
-  """simple wrapper around http request"""
-  def __init__(self,auth=None):
-    self.auth = auth
-
-  def __call__(self, url, method='get', params=None, data=None, auth=None ):
-    import pdb;pdb.set_trace()
-    if method == 'get':
-      response = requests.request(method,url,params=params,auth=auth)
-    if method == 'post':
-      response = requests.request(method,url,params=params,auth=auth,
-                   **self._payload(data))
-
-    response.raise_for_status()
-    return response.content # TODO: What about binary content???
-
-  def _payload(self,data):
-    dump = json.dumps(data)
-    return {
-      'data':dump,
-      'header': {"content-type":"application/json",
-                 "content-length":len(dump)}}
 
 class TPClient(object):
   'Takes questions and puts them to TP'
@@ -68,18 +28,18 @@ class TPClient(object):
     self.BASEURL = url
     self.requester = functools.partial(requester(),auth=auth)
 
-  def __request(self, method, url, data=None,
-              base=True, response_parser=JSON, **params):
-
-    params['format'] = str(response_parser)
-    resp = self.requester(
+  def _request(self, method, url, data=None,
+              base=True, response_format=JSON, **params):
+    """ Make single request """
+    return self.requester(
       url = (self.BASEURL*base) + url ,
       method = method,
+      format = response_format,
       params = params, 
       data = data)
-    return resp
 
   def request(self,method,url,data=None,limit=50,**params):
+    """ Return iterator over mutli request response """
     init = functools.partial(
                 self.__request,
                 method = method,
@@ -92,20 +52,19 @@ class TPClient(object):
 
 class Response(object):
   """ Seamless Iter over Response to a query """
-  def __init__(self,init_f,next_f,limit,parser=JSON):
-    self.parser = parser
+  def __init__(self,init_f,next_f,limit):
     self.init_response = init_f
     self.limit = limit
     self.next = next_f
 
   def __iter__(self):
     """Merge result of all rquests as one iterator"""
-    items,url = self.parser(self.init_response())
+    items,url = self.init_response()
     for i in range(max(self.limit/len(items),1)):
       if i==0: # Special case start 
         pass # already assigned 
       else:
-        items,url = self.parser(self.next(url))
+        items,url = self.next(url)
       for x in items:yield x 
 
 class Project(object):
