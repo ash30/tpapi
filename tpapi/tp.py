@@ -1,6 +1,5 @@
 import itertools
 import functools 
-import entities 
 import utils
 
 # Respons Formats
@@ -8,22 +7,16 @@ JSON = utils.JsonResponse()
 
 """
 Todo:
-  - Project has to take Entity Factory Callback
-  - Default class factory
-  - Move entities list to class factory, move dependancy to api module
-
+  - Access rights on entity model
   - Docs 
   - Tests Tests Tests 
 
   0.2
-  - entity editing
   - TP client caching
 """
 
 class TPClient(object):
   'Takes questions and puts them to TP'
-  ENTITIES = entities.ALL
-
   def __init__(self, url, requester, auth=None):
     self.BASEURL = url
     self.requester = functools.partial(requester(),auth=auth)
@@ -70,20 +63,22 @@ class Response(object):
 class Project(object):
   """ Projects are Query Factories, setup acid and client
   """
-  def __init__(self,acid,tp_client):
+  def __init__(self,acid,tp_client,entity_factory):
     self.tp_client = tp_client
     self.project_acid = acid
+    self.entity_factory = entity_factory
 
   def __getattr__(self,name):
-    if name not in self.tp_client.ENTITIES:
-       raise AttributeError()
-    return Query(self.tp_client,self.project_acid,entity_type=name)
+    return Query( self.tp_client,
+                  self.project_acid,
+                  entity_type=name,
+                  entity_class=self.entity_factory(name))
 
 
 class Query(object):
-  def __init__(self, client, project_acid, entity_type):
+  def __init__(self, client, project_acid, entity_type, entity_class):
     self.entity_type = entity_type
-    self.entity_class = Entity(self.entity_type)
+    self.entity_class = entity_class 
     self._project_acid = project_acid
     self._client = client
 
@@ -116,9 +111,6 @@ class Query(object):
     if id: return next(r)
     else: return r 
 
-def Entity(name):
-  return  globals().get(name,GenericEntity) 
-
 class EntityBase(object):
   def __init__(self,project,**kwargs):
     if 'Id' not in kwargs:
@@ -140,12 +132,6 @@ class EntityBase(object):
 
 class GenericEntity(EntityBase):
   pass
-
-class Bugs(EntityBase):
-  'Here is where we add entity specific methods'
-  def Priority(self):
-    pass # SHOULD BE PROPERTY
-
 
 if __name__ == "__main__":
   a=EntityBase(project='test',Id=123,p1=1,p2=2,p3=3)
