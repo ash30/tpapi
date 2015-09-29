@@ -122,8 +122,8 @@ class EntityBase(object):
   def sync(self):
     """ post changes made entity to server """
     entitiy_id = self.Id
-    data = dictfilter(lambda t: t[0].startswith('_'),self.__dict__.iteritems()))
-    getattr(self.project,'Assignables').edit(Id = entitiy_id, data**)
+    data = dict(filter(lambda t: t[0].startswith('_'),self.__dict__.iteritems()))
+    getattr(self.project,'Assignables').edit(Id = entitiy_id, **data)
 
   def __repr__(self):
     name = self.__class__.__name__
