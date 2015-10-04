@@ -7,7 +7,6 @@ JSON = utils.JsonResponse()
 
 """
 Todo:
-  - Access rights on entity model
   - Docs 
   - Tests Tests Tests 
 
@@ -112,23 +111,42 @@ class Query(object):
 
 
 class EntityBase(object):
+  def __new__(cls,*args,**kwargs):
+    "Setup _tpdata before instance access controls"
+    instance = super(EntityBase, cls).__new__(cls)
+    super(EntityBase,instance).__setattr__('_tpdata',{})
+    return instance 
+
   def __init__(self,project,**kwargs):
     if 'Id' not in kwargs:
       raise Exception() #TODO: Better exception
     self._project = project
-    # store entity data in instance dict
-    self.__dict__.update(kwargs)
+    self._tpdata.update(kwargs)
+
+  def __setattr__(self,name,val):
+    if name in self._tpdata:
+      self._tpdata[name] = val
+    else:
+      object.__setattr__(self,name,val)
+
+  def __getattr__(self,name):
+    if name in self._tpdata:
+      return self._tpdata[name]
+    else: 
+      return AttributeError()
 
   def sync(self):
     """ post changes made entity to server """
     entitiy_id = self.Id
-    data = dict(filter(lambda t: t[0].startswith('_'),self.__dict__.iteritems()))
-    getattr(self.project,'Assignables').edit(Id = entitiy_id, **data)
+    data = self._tpdata.copy()
+    data.pop('Id')
+    getattr(self._project,'Assignables').edit(Id = entitiy_id,data=str(data))
 
   def __repr__(self):
     name = self.__class__.__name__
     return "{}({})".format(name,
-    ",".join("{}={}".format(k,repr(v)) for k,v in self._dict__.iteritems()))
+    ",".join("{}={}".format(k,repr(v)) for k,v in self._tpdata.iteritems()))
+
 
 class GenericEntity(EntityBase):
   pass
