@@ -63,22 +63,21 @@ class Response(object):
 class Project(object):
   """ Projects are Query Factories, setup acid and client
   """
-  def __init__(self,acid,tp_client,entity_factory):
+  def __init__(self,acid,tp_client,query_class):
     self.tp_client = tp_client
     self.project_acid = acid
-    self.entity_factory = entity_factory
+    self._query = query_class
 
   def __getattr__(self,name):
-    return Query( self.tp_client,
+    return self._query( self.tp_client,
                   self.project_acid,
-                  entity_type=name,
-                  entity_class=self.entity_factory(name))
+                  entity_type=name)
 
 
 class Query(object):
-  def __init__(self, client, project_acid, entity_type, entity_class):
+  "Interface class for client interaction"
+  def __init__(self, client, project_acid, entity_type):
     self.entity_type = entity_type
-    self.entity_class = entity_class 
     self._project_acid = project_acid
     self._client = client
 
@@ -88,8 +87,7 @@ class Query(object):
       url = self.entity_type,
       data = data,
       acid = self._project_acid)
-    r = itertools.imap(lambda x :self.entity_class(self._client,**x),r)
-    return self.entity_class(self._client,**(next(r)))
+    return resp
 
   def edit(self,Id,**data):
     resp = self._client.request(
@@ -105,11 +103,8 @@ class Query(object):
       acid = self._project_acid,
       limit=entity_max,
       **kwargs)
-    r = itertools.imap(lambda x :self.entity_class(self._client,**x),r)
+    return r
 
-    # If id just return the 1 and only instance, else return iter 
-    if id: return next(r)
-    else: return r 
 
 class EntityBase(object):
   def __init__(self,project,**kwargs):
@@ -134,5 +129,4 @@ class GenericEntity(EntityBase):
   pass
 
 if __name__ == "__main__":
-  a=EntityBase(project='test',Id=123,p1=1,p2=2,p3=3)
-  print a.p1
+  pass
