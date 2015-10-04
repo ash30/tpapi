@@ -51,14 +51,16 @@ class Response(object):
     self.next = next_f
 
   def __iter__(self):
-    """Merge result of all rquests as one iterator"""
-    items,url = self.init_response()
-    for i in range(max(self.limit/len(items),1)):
-      if i==0: # Special case start 
-        pass # already assigned 
-      else:
-        items,url = self.next(url)
-      for x in items:yield x 
+    item,url = self.init_response()
+    limit = self.limit
+    for x in range((self.limit/25)+1):
+      for x in range(min(len(item),self.limit)):
+        yield item[x]
+      if len(item) < self.limit and url:
+        limit = limit - len(item)
+        item,url = self.next(url)
+      else: break
+
 
 class Project(object):
   """ Projects are Query Factories, setup acid and client
