@@ -1,82 +1,236 @@
-import unittest
-import tp
+import unittest, functools
+from collections import namedtuple
+import tp,api
 
-'''
-TODO:
-Test toArgString
-'''
+# MOCKS
+class MockCallable(object):
+  fcall = namedtuple('fcall',['args','kwargs'])
+  def __init__(self,response=None):
+    self.last_call = None
+    self.response = response
+  def __call__(self,*args,**kwargs):
+    self.last_call = self.fcall(args,kwargs)
+    return self.response
 
-# Todo: Test baseurl is respected
-# Todo: Client method tests
-# Todo: Test Different Limit numbers -> Higher than response len, lower
-# Todo: Test getitem
+class MockObject(object):
+  def __init__(self,**kwargs):
+    self.__dict__.update(kwargs)
 
-class ClientTests(unittest.TestCase):
-  # MOCK
-  class mock_requester(object):
-    def __init__(self,response_callback): 
-      self.response = response_callback
-    def __call__(self,url,params,*args,**kwargs):
-      return self.response()
-
-  def setUp(self):
-    self.BASEURL = 'test'
-
-  def testSimpleResponse(self):
-    'I can Iterate over given response'
-    response = lambda: """{"Items":[1,2]}"""
-    self.aut = tp.TPClient( self.BASEURL,
-                            requester=self.mock_requester(response))
-    assert 1 in self.aut.query('Bugs',)      
-
-  def testMultiResponse(self):
-    'I can Iterate over a multi query response'
-    
-    def create_mock():
-      r = [""" {"Items":[3,4]} """,
-           """ {"Items":[1,2], "Next":"url2"} """]
-                   
-      callback =  lambda: r.pop() if len(r) > 1  else r[0]
-      return tp.TPClient( self.BASEURL,
-                            requester=self.mock_requester(callback))
-
-    aut = create_mock()
-    assert 4 in aut.query('Arbitrary') 
-
-  def testMaxMultiResponse(self):
-    'I can only iterate equal to length of ENTITY_MAX'
-    response = lambda: """ {"Items":[1,2],"Next":"url"} """
-    aut = tp.TPClient( self.BASEURL,
-                       requester=self.mock_requester(response))
-    assert len([x for x in aut.query('Arb',entity_max=10)]) == 10 
-
-  def testSingleResponse(self):
-    'I can request single entity info'
-    response = lambda: """ {"Id":123} """
-    aut = tp.TPClient( self.BASEURL,
-                        requester=self.mock_requester(response))  
-    assert aut.query('Arb')[0]
-
-
-class ProjectTests(unittest.TestCase):
-
-  class MockClient(tp.TPClient):
-    def _request(self,url,verb='get',*args,**kwargs):
-      return {}
-
-  class MockEntity(object):
-    @classmethod
-    def from_json(cls,raw):
-      return raw
-
-  def setUp(self):
+# TP TESTS
+class TPClientTests(unittest.TestCase):
+  "Test baseurl behaviour + it creates correct Response instances"
+  def test_url_has_base(self):
+    mock_requestor = MockCallable()
+    base_url       = 'www.baseurl.com'
+    client         = tp.TPClient(base_url,mock_requestor)
   
-    self.mock_client =  self.MockClient('BASEURL',None)
+    # has base class by default
+    client._request('get',url='bugs',params={})
+    self.assertEqual( 
+      mock_requestor.last_call.kwargs.get('url'),base_url+'/bugs')
 
-  def test(self):
-    class_under_test = tp.Project('ACIDVAL',self.mock_client,self.MockEntity)
-    #assert class_under_test.Bugs(ids=12345) == []
+    client._request('get',url='bugs',base=False,params={})
+    self.assertEqual(
+      mock_requestor.last_call.kwargs.get('url'),'bugs')
+
+  def test_correctReponse(self):
+    pass
+
+class ResponseTests(unittest.TestCase):
+  "Response class have to validate continual iter over + limits"
+
+  def create_iter(self,init,limit):
+    response = tp.Response(init,lambda x:x,limit)
+    return [ x for x in response]
+
+  def test_simpleIter(self):
+    'Given response of list of items, no url, just iter items'
+    r = lambda: (range(10),None)
+    result = self.create_iter(r,limit=100)
+    self.assertEqual(len(result),len(range(10)))
+
+  def test_simpleIterLong(self):
+    'Given long list of items, no url, just iter items'
+    r = lambda: (range(99),None)
+    result = self.create_iter(r,limit=100)
+    self.assertEqual(len(result),len(range(99)))
+
+  def test_simpleIterLimit(self):
+    'Given long list of items, no url, just iter items until limit'
+    r = lambda: (range(99),None)
+    result = self.create_iter(r,limit=50)
+    self.assertEqual(len(result),50)
+
+  def test_urlIter(self):
+    'Given url,iter will continue over next list of items'
+    r =  lambda: (range(10),(range(10),None))
+    result = self.create_iter(r,limit=100)
+    self.assertEqual(len(result),20)
+
+  def test_urlIterTwice(self):
+    'Given 2 urls, iter will continue'
+    r =  lambda: (range(10),(range(10),(range(10),None)))
+    result = self.create_iter(r,limit=100)
+    self.assertEqual(len(result),30)
+
+  def test_urlIterLimit(self):
+    'Regardless of urls, iter will stop at limi'
+    r =  lambda: (range(10),(range(10),(range(10),None)))
+    result = self.create_iter(r,limit=5)
+    self.assertEqual(len(result),5)
+
+class QueryTests(unittest.TestCase):
+  "Query Tests only have to validate correct use of client"  
+
+  def setUp(self):
+    self.mock_client = MockObject(request=MockCallable(response=[]))
+
+  def test_queryEntity(self):
+    "Query submits entity to client call"
+    query = tp.Query(self.mock_client,'acid','entity')
+    # query
+    call = query.query()
+    self.assertTrue(
+      self.mock_client.request.last_call.kwargs['url'].startswith('entity'))
+    # edit
+    call = query.edit(Id=123)
+    self.assertTrue(
+      self.mock_client.request.last_call.kwargs['url'].startswith('entity'))
+    # create
+    call = query.create()
+    self.assertTrue(
+      self.mock_client.request.last_call.kwargs['url'].startswith('entity'))
+
+  def test_queryID(self):
+    "Query submits entity+id to client call"
+    query = tp.Query(self.mock_client,'acid','entity')
+    self.assertEqual(query._IDUrl(123),'entity/123')
+
+
+class EntityBaseTests(unittest.TestCase):
+  class mock_object(object):
+    def __init__(self,**kwargs):
+      self.__dict__.update(kwargs)
+  
+  def test_getattr_Tpdata(self):
+    'I can retrieve value from TP data cache'
+    i = tp.EntityBase('project_mock',Id=123,data1='a',data2=1,data3=[1,2])
+    self.assertEqual(i.data1,'a')
+    self.assertEqual(i.data2,1)
+    self.assertEqual(i.data3,[1,2])
+  
+  def test_getattr_InstanceVar(self):
+    'I can retrieve standard variable from instance'
+    i = tp.EntityBase('project_mock',Id=123, data1='a',data2=1,data3=[1,2]) 
+    self.assertEqual(i._project, 'project_mock')
+
+  def test_getattr_shadowing(self):
+    'If name exists in tpdata and instance, get instance'
+    i = tp.EntityBase('project_mock',_project='not_project',Id=123)
+    self.assertEqual(i._project,'project_mock')
+    self.assertTrue('_project' in i._tpdata)
     
+  def test_setattr_Tpdata(self):
+    'I can edit tpdata cache ref'
+    i = tp.EntityBase('project_mock',Id=123,data1='a')
+    i.data1 = 'b'
+    self.assertEqual(i.data1,'b')
+    self.assertEqual(i._tpdata['data1'],'b')
+
+  def test_setattr_InstanceVar(self):
+    'I can modify normally instance ref'
+    i = tp.EntityBase('project_mock',Id=123,data1='a')
+    i._project = 'new_project'
+    self.assertEqual(i._project, 'new_project')
+    self.assertEqual(i.__dict__['_project'],'new_project')
+
+  def test_sync(self):
+    'I can send copy of tp data to update client'
+    # To be sucessful, cls needs to call _project for query
+    # then call  with id and copy of cls _tpdata
+
+    mock_project = self.mock_object(
+      Assignables = self.mock_object(edit=MockCallable()))
+
+    i = tp.EntityBase(mock_project,Id=123,data2='a',data3=[1,2])
+    i.sync()
+    spy = mock_project.Assignables.edit
+    call = spy.last_call[1] # kwargs that were called
+    self.assertEqual(call['Id'],123)
+    self.assertEqual(call['data'],"{'data3': [1, 2], 'data2': 'a'}")
+
+# Utils Tests
+class JsonResponseTests(unittest.TestCase):
+  "Make sure it parse json correctly into TP response"
+
+class RequesterTests(unittest.TestCase):
+  "Error handling on bad dumps + general call"
+
+# API Tests
+class DefaultEntityFactoryTests(unittest.TestCase):
+  'make sure it finds right class + custom module + illegal class name'
+
+  def test_wrongEntity(self):
+    'factory Errors on wrong entity'
+    factory = api.DefaultEntityClassFactory()
+    self.assertRaises(Exception,factory,'test')
+
+  def test_defaultClass(self):
+    'Default class, factory should return given default callable'
+    factory = api.DefaultEntityClassFactory(
+      default_class = MockCallable(response='class'))
+    self.assertEqual(factory('Bugs')(),'class')
+
+  def test_CustomLookup(self):
+    'factory looks up class name in custom module'
+    factory = api.DefaultEntityClassFactory(
+      MockObject(Bugs = MockCallable(response='Bug')),
+      default_class = MockCallable(response='generic'))
+    self.assertEqual(factory('Bugs')(),'Bug')
+
+
+class QueryWrapperTests(unittest.TestCase):
+  "Test paritaling class method, gettattr only works for c,q,e + __call__ correctly wraps"
+
+  def setUp(self):
+    self.mock_client = MockObject(request=MockCallable(response=[{'Id':1}]))
+    self.mock_factory = MockCallable(response=MockCallable(response='wrapped'))
+
+  def test_entityCorrectWrapping(self):
+    'Entity type is passed to factory'
+    self.mock_factory = lambda x: MockCallable(response=x)
+    query_wrapper = api.QueryEntityWrapper(
+      self.mock_client,'acid','Bugs',self.mock_factory)
+    response = query_wrapper.query()
+    self.assertEqual(next(response),'Bugs')
+
+  def test_delegateQueryMethods(self):
+    'Calls to query,edit and create are passed to query'
+    mock_query_class = MockCallable(response=MockObject(
+      edit=MockCallable(),create=MockCallable(),query=MockCallable()))
+
+    query_wrapper = api.QueryEntityWrapper(
+      self.mock_client,'acid','Bugs',query_class = mock_query_class)
+
+    query_wrapper.query(arg1=1)
+    query_wrapper.edit(arg2=2)
+    query_wrapper.create(arg3=3)
+    self.assertEqual(query_wrapper._query.query.last_call.kwargs['arg1'],1)
+    self.assertEqual(query_wrapper._query.edit.last_call.kwargs['arg2'],2)
+    self.assertEqual(query_wrapper._query.create.last_call.kwargs['arg3'],3)
+
+  def test_ErrorOnNonQueryMethods(self):
+    'Errors on calls to methods that dont exist on wrapped query'
+    query_wrapper = api.QueryEntityWrapper(self.mock_client,'acid','Bugs')
+    self.assertRaises(AttributeError,
+      lambda m: getattr(query_wrapper,m),'nonMethod')
+
+  def test_partialContruct(self):
+    'Use case: user can partial class method constructor'
+    partial = functools.partial(api.QueryEntityWrapper.construct,self.mock_factory)
+    query_wrapper = partial(self.mock_client,'acid','Bugs')
+    self.assertEqual(next(query_wrapper.query()),'wrapped')
+
 
 if __name__ == "__main__":
   # Import it! 
