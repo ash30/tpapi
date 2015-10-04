@@ -1,4 +1,4 @@
-import itertools
+import os 
 import functools 
 import utils
 
@@ -25,7 +25,7 @@ class TPClient(object):
               base=True, response_format=JSON, **params):
     """ Make single request """
     return self.requester(
-      url = (self.BASEURL*base) + url ,
+      url = os.path.join((self.BASEURL*base),url) ,
       method = method,
       format = response_format,
       params = params, 
@@ -82,6 +82,9 @@ class Query(object):
     self.entity_type = entity_type
     self._project_acid = project_acid
     self._client = client
+  
+  def _IDUrl(self,Id):
+    return '/'.join([self.entity_type,str(Id)])
 
   def create(self,**data):
     resp = self._client.request(
@@ -94,14 +97,14 @@ class Query(object):
   def edit(self,Id,**data):
     resp = self._client.request(
       method = 'post',
-      url = '/'.join([self.entity_type,str(Id)]),
+      url = self._IDUrl(Id),
       acid = self._project_acid,
       data = data)
 
   def query(self,Id='',entity_max=25,**kwargs):
     r = self._client.request(
       method = 'get',
-      url = '/'.join([self.entity_type,str(Id)]),
+      url = self._IDUrl(Id),
       acid = self._project_acid,
       limit=entity_max,
       **kwargs)
