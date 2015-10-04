@@ -17,9 +17,9 @@ Todo:
 
 class TPClient(object):
   'Takes questions and puts them to TP'
-  def __init__(self, url, requester, auth=None):
+  def __init__(self, url, requester):
     self.BASEURL = url
-    self.requester = functools.partial(requester(),auth=auth)
+    self.requester = requester 
 
   def _request(self, method, url, data=None,
               base=True, response_format=JSON, **params):

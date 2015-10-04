@@ -23,13 +23,13 @@ class HTTPRequester(object):
   def __init__(self,auth=None):
     self.auth = auth
 
-  def __call__(self, url, response_format, method='get', params=None, data=None, auth=None ):
-    params['format'] = str(response_parser) # Add Format class to http args
+  def __call__(self, url, response_format, method='get', params=None, data=None ):
+    params['format'] = str(response_format) # Add Format class to http args
 
     if method == 'get':
-      response = requests.request(method,url,params=params,auth=auth)
+      response = requests.request(method,url,params=params,auth=self.auth)
     if method == 'post':
-      response = requests.request(method,url,params=params,auth=auth,
+      response = requests.request(method,url,params=params,auth=self.auth,
                    **self._payload(data))
 
     response.raise_for_status()
