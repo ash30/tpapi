@@ -83,9 +83,14 @@ class Query(object):
     self._client = client
   
   def _IDUrl(self,Id):
+    'return entity specific url'
     return '/'.join([self.entity_type,str(Id)])
 
   def create(self,**data):
+    """ Create a new TP entity 
+    @params data: extra keyword argurments that are used to set entity properties 
+    @return Response iterator over the returned TP Entities  
+    """
     resp = self._client.request(
       method = 'post',
       url = self.entity_type,
@@ -94,6 +99,12 @@ class Query(object):
     return resp
 
   def edit(self,Id,**data):
+    """ Edits the properties of an exisitng TP entity
+    @params Id: The id of the TP entity you wish to edit
+    @params data: extra keyword argurments that are used to set entity properties 
+
+    @return Response iterator over the returned TP Entities  
+    """
     resp = self._client.request(
       method = 'post',
       url = self._IDUrl(Id),
@@ -101,6 +112,10 @@ class Query(object):
       data = data)
 
   def query(self,Id='',entity_max=25,**kwargs):
+    """ Returns an iterator over any matching entities to query 
+    @param kwargs: extra keyword arguments to be passed as query args
+    @return Response iterator over the returned TP Entities  
+    """
     r = self._client.request(
       method = 'get',
       url = self._IDUrl(Id),
