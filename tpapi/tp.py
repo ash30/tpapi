@@ -6,11 +6,8 @@ import utils
 JSON = utils.JsonResponse()
 
 """
-Todo:
-  - Docs 
-  - Tests Tests Tests 
-
-  0.2
+Future Todo:
+  - Pass entity objects into edits
   - TP client caching
 """
 
@@ -20,30 +17,33 @@ class TPClient(object):
     self.BASEURL = url
     self.requester = requester 
 
-  def _request(self, method, url, data=None,
-              base=True, response_format=JSON, **params):
+  def _request(self, method, url, params,  data=None,
+              base=True, response_format=JSON):
     """ Make single request """
     return self.requester(
       url = os.path.join((self.BASEURL*base),url) ,
       method = method,
-      format = response_format,
+      response_format = response_format,
       params = params, 
       data = data)
 
   def request(self,method,url,data=None,limit=50,**params):
-    """ Return iterator over mutli request response """
+    """ Return iterator over multi request response """
     init = functools.partial(
-                self.__request,
+                self._request,
                 method = method,
                 url = url,
                 params = params,
                 data = data)
-    next_f  = functools.partial(self.request,method='get',base=False)
+    next_f  = functools.partial(self._request,method='get',params={},base=False)
     return Response(init,next_f,limit)
 
 
 class Response(object):
-  """ Seamless Iter over Response to a query """
+  """Iterator over an Entity list.
+  ransparently handles pagination of resources and 
+  keeps enitity data up todate by resending http request on iter
+  """
   def __init__(self,init_f,next_f,limit):
     self.init_response = init_f
     self.limit = limit
@@ -57,39 +57,33 @@ class Response(object):
         yield item[x]
       if len(item) < self.limit and url:
         limit = limit - len(item)
-        item,url = self.next(url)
+        item,url = self.next(url=url)
       else: break
 
 
-class Project(object):
-  """ Projects are Query Factories, setup acid and client
-  """
-  def __init__(self,acid,tp_client,query_class):
-    self.tp_client = tp_client
-    self.project_acid = acid
-    self._query = query_class
-
-  def __getattr__(self,name):
-    return self._query( self.tp_client,
-                  self.project_acid,
-                  entity_type=name)
-
-
 class Query(object):
-  "Interface class for client interaction"
-  def __init__(self, client, project_acid, entity_type):
+  """Adapter class for putting requests to TPClients
+
+  """
+  def __init__(self, tp_client, project_acid, entity_type):
+    """
+    :param tp.TPClient tp_client: TPclient object
+    :param str project_acid: acid string of TargetProcess project:
+    :param str entity_type: Name of desired TargetProcess Entity
+    """
     self.entity_type = entity_type
     self._project_acid = project_acid
-    self._client = client
+    self._client = tp_client
   
-  def _IDUrl(self,Id):
+  def _IDUrl(self,entity_id):
     'return entity specific url'
-    return '/'.join([self.entity_type,str(Id)])
+    return '/'.join([self.entity_type,str(entity_id)])
 
   def create(self,**data):
-    """ Create a new TP entity 
-    @params data: extra keyword argurments that are used to set entity properties 
-    @return Response iterator over the returned TP Entities  
+    """Create a new entity within TargetProcess Project
+
+    :param data: extra keyword argurments that are used to set entity properties 
+    :return: tp.Response
     """
     resp = self._client.request(
       method = 'post',
@@ -98,44 +92,75 @@ class Query(object):
       acid = self._project_acid)
     return resp
 
-  def edit(self,Id,**data):
-    """ Edits the properties of an exisitng TP entity
-    @params Id: The id of the TP entity you wish to edit
-    @params data: extra keyword argurments that are used to set entity properties 
+  def edit(self,entity_id,**data):
+    """Edits the properties of an exisitng entity within TargetProcess Project
 
-    @return Response iterator over the returned TP Entities  
+    :param int entity_id: The id of entity
+    :param data: extra keyword argurments that are used to set entity properties 
+    :return: tp.Response
     """
     resp = self._client.request(
       method = 'post',
-      url = self._IDUrl(Id),
+      url = self._IDUrl(entity_id),
       acid = self._project_acid,
       data = data)
 
-  def query(self,Id='',entity_max=25,**kwargs):
-    """ Returns an iterator over any matching entities to query 
-    @param kwargs: extra keyword arguments to be passed as query args
-    @return Response iterator over the returned TP Entities  
+  def query(self,entity_id='',entity_max=25,**kwargs):
+    """ Returns an iterator over any matching entities to query within TargetProcess Project
+
+    :param int entity_id: (Optional) If provided, return specific TargetProcess Entity
+    :param int entity_max: (Optional) Max number of entities to return
+    :param kwargs: extra keyword arguments to be passed as query args
+    :return: tp.Response
     """
     r = self._client.request(
       method = 'get',
-      url = self._IDUrl(Id),
+      url = self._IDUrl(entity_id),
       acid = self._project_acid,
       limit=entity_max,
       **kwargs)
     return r
 
 
+class Project(object):
+  """ Projects are Query Factories, setting up query instances 
+  with desired client,acid_str and entity type via an attribute lookup interface
+
+  The attribute string is identical to the TargetProcess reference documentation
+  so be aware of capitalisation.
+
+  Usage::
+    >>> proj = Project(acid,client)
+    >>> proj.Bugs
+    >>> proj.Userstories
+  """
+
+  def __init__(self,tp_client,project_acid,query_class=Query):
+    """
+    :param tp.TPclient tp_client: TPclient object
+    :param str project_acid: acid string of TargetProcess project:
+    """
+    self.tp_client = tp_client
+    self.project_acid = project_acid
+    self._query = query_class
+
+  def __getattr__(self,name):
+    return self._query( self.tp_client,
+                  self.project_acid,
+                  entity_type=name)
+
+
 class EntityBase(object):
   def __new__(cls,*args,**kwargs):
     "Setup _tpdata before instance access controls"
-    instance = super(EntityBase, cls).__new__(cls)
+    instance = object.__new__(cls)
     super(EntityBase,instance).__setattr__('_tpdata',{})
     return instance 
 
-  def __init__(self,project,**kwargs):
-    if 'Id' not in kwargs:
-      raise Exception() #TODO: Better exception
+  def __init__(self,project,Id,**kwargs):
+    # Every Entity requires a project and ID
     self._project = project
+    self._tpdate['Id'] = Id
     self._tpdata.update(kwargs)
 
   def __setattr__(self,name,val):
@@ -156,6 +181,9 @@ class EntityBase(object):
     data = self._tpdata.copy()
     data.pop('Id')
     getattr(self._project,'Assignables').edit(Id = entitiy_id,data=str(data))
+
+  def toDcit(self):
+    return self._tpdata
 
   def __repr__(self):
     name = self.__class__.__name__

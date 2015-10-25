@@ -93,7 +93,7 @@ class QueryTests(unittest.TestCase):
     self.assertTrue(
       self.mock_client.request.last_call.kwargs['url'].startswith('entity'))
     # edit
-    call = query.edit(Id=123)
+    call = query.edit(entity_id=123)
     self.assertTrue(
       self.mock_client.request.last_call.kwargs['url'].startswith('entity'))
     # create
@@ -167,25 +167,25 @@ class RequesterTests(unittest.TestCase):
   "Error handling on bad dumps + general call"
 
 # API Tests
-class DefaultEntityFactoryTests(unittest.TestCase):
+class EntityFactoryTests(unittest.TestCase):
   'make sure it finds right class + custom module + illegal class name'
 
   def test_wrongEntity(self):
     'factory Errors on wrong entity'
-    factory = api.DefaultEntityClassFactory()
+    factory = api.EntityFactory('dummyClass')
     self.assertRaises(Exception,factory,'test')
 
   def test_defaultClass(self):
     'Default class, factory should return given default callable'
-    factory = api.DefaultEntityClassFactory(
+    factory = api.EntityFactory(
       default_class = MockCallable(response='class'))
     self.assertEqual(factory('Bugs')(),'class')
 
   def test_CustomLookup(self):
     'factory looks up class name in custom module'
-    factory = api.DefaultEntityClassFactory(
-      MockObject(Bugs = MockCallable(response='Bug')),
-      default_class = MockCallable(response='generic'))
+    factory = api.EntityFactory(
+      default_class = MockCallable(response='generic'),
+      extension_module = MockObject(Bugs = MockCallable(response='Bug')))
     self.assertEqual(factory('Bugs')(),'Bug')
 
 
