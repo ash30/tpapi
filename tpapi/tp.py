@@ -160,7 +160,7 @@ class EntityBase(object):
   def __init__(self,project,Id,**kwargs):
     # Every Entity requires a project and ID
     self._project = project
-    self._tpdate['Id'] = Id
+    self._tpdata['Id'] = Id
     self._tpdata.update(kwargs)
 
   def __setattr__(self,name,val):
