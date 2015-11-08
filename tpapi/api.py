@@ -38,46 +38,64 @@ class EntityFactory(object):
     else:
       return self.default_class
      
-class QueryEntityWrapper(object):
-  "Query Class Wrapper to transparently instanciate entitiy subclass"
-  @classmethod
-  def construct(cls,client,project,entity_type,entity_factory):
-    'Convenience methods for partialing init'
-    return cls(client,project,entity_type,entity_factory = entity_factory)
-
-  def __init__(self,client,project,entity_type,
-               entity_factory=EntityFactory,
-               query_class=tp.Query):
-    self._query = query_class(client,project,entity_type)
-    self._client = client
-    self._entity_class = entity_factory(entity_type)
-
-  def __getattr__(self,name):
-    'delegate to query methods else raise'
-    if name in ['create','edit','query']:
-      return functools.partial(self.__call__,method=name)
-    else:
-      raise AttributeError()
-
-  def wrap(self,data):
-    return self._entity_class(self._client,**data)
-
-  def __call__(self,method,*args,**kwargs):
-    """ call delegate method and wrap return """
-    query = getattr(self._query,method)
-    query_response = query(*args,**kwargs)
-    if query_response:
-      return itertools.imap(self.wrap, query_response)
 
 class EntityQuery(tp.Query):
-    def __init__(self,client,project,entity_type,
-               entity_factory=EntityFactory):
-      super(EntityQuery,self).__init__(self,client,project,entity_type)
-      self._entity_class = entity_factory(entity_type)
+  "Query subclass that returns response as Entities"
+  class QueryIter(object):
+    def __init__(self,data,entity_class):
+      self.data = data
+      self.entity_class = entity_class
+    def __iter__(self):
+      for x in self.data:
+        yield self.entity_class(x)
 
+  def __init__(self,client,project_acid,entity_type,entity_class):
+    super(EntityQuery,self).__init__(client,project_acid,entity_type)
+    self.entity_class = entity_class
+
+  def query(self,entity_id='',entity_max=25,**kwargs):
+    response = super(EntityQuery,self).query(entity_id,entity_max,**kwargs)
+    return self.QueryIter(response,self.entity_class)
+
+  def create(self,**data):
+    response = super(EntityQuery,self).create(**data)
+    return self.entity_class([x for x in response][0])
 
 # API BEGINS 
 DEFAULT_ENTITY_FACTORY = EntityFactory(tp.GenericEntity)
+
+class Project(object):
+  """ Projects are Query Factories, setting up query instances 
+  with desired client,acid_str and entity type via an attribute lookup interface
+
+  The attribute string is identical to the TargetProcess reference documentation
+  so be aware of capitalisation.
+
+  Usage::
+    >>> proj = Project(acid,client)
+    >>> proj.Bugs
+    >>> proj.Userstories
+  """
+
+  def __init__(self,tp_client,project_acid,entity_factory,query_class=EntityQuery):
+    """
+    :param tp.TPclient tp_client: TPclient object
+    :param str project_acid: acid string of TargetProcess project:
+    """
+    self.tp_client = tp_client
+    self.project_acid = project_acid
+    self.entity_factory = entity_factory
+    self._query = query_class
+
+  def create_entity(self,data,entity_type):
+    return self.entity_factory(entity_type)(self,**data)
+
+  def __getattr__(self,name):
+    return self._query( self.tp_client,
+                  self.project_acid,
+                  entity_type = name,
+                  entity_class = functools.partial(self.create_entity,entity_type=name))
+
 
 def get_project(project_id, tp_url, auth=None, 
                 entity_factory=DEFAULT_ENTITY_FACTORY):
@@ -97,9 +115,6 @@ def get_project(project_id, tp_url, auth=None,
   context = tp.Query(client,project_acid=None,entity_type='Context').query(ids=project_id)
   project_acid = next(context.__iter__())['Acid']
 
-  wrapped_query_class  = functools.partial(QueryEntityWrapper.construct,
-    entity_factory=entity_factory)
-
-  return tp.Project(client,project_acid,wrapped_query_class)
+  return Project(client,project_acid,entity_factory)
 
 
