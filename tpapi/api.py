@@ -87,14 +87,14 @@ class Project(object):
     self.entity_factory = entity_factory
     self._query = query_class
 
-  def create_entity(self,data,entity_type):
+  def _create_entity(self,data,entity_type):
     return self.entity_factory(entity_type)(self,**data)
 
   def __getattr__(self,name):
     return self._query( self.tp_client,
                   self.project_acid,
                   entity_type = name,
-                  entity_class = functools.partial(self.create_entity,entity_type=name))
+                  entity_class = functools.partial(self._create_entity,entity_type=name))
 
 
 def get_project(project_id, tp_url, auth=None, 

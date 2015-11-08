@@ -122,34 +122,6 @@ class Query(object):
     return r
 
 
-class Project(object):
-  """ Projects are Query Factories, setting up query instances 
-  with desired client,acid_str and entity type via an attribute lookup interface
-
-  The attribute string is identical to the TargetProcess reference documentation
-  so be aware of capitalisation.
-
-  Usage::
-    >>> proj = Project(acid,client)
-    >>> proj.Bugs
-    >>> proj.Userstories
-  """
-
-  def __init__(self,tp_client,project_acid,query_class=Query):
-    """
-    :param tp.TPclient tp_client: TPclient object
-    :param str project_acid: acid string of TargetProcess project:
-    """
-    self.tp_client = tp_client
-    self.project_acid = project_acid
-    self._query = query_class
-
-  def __getattr__(self,name):
-    return self._query( self.tp_client,
-                  self.project_acid,
-                  entity_type=name)
-
-
 class EntityBase(object):
   def __new__(cls,*args,**kwargs):
     "Setup _tpdata before instance access controls"

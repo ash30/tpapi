@@ -40,7 +40,7 @@ class ResponseTests(unittest.TestCase):
   "Response class have to validate continual iter over + limits"
 
   def create_iter(self,init,limit):
-    response = tp.Response(init,lambda x:x,limit)
+    response = tp.Response(init,lambda url:url,limit)
     return [ x for x in response]
 
   def test_simpleIter(self):
@@ -187,49 +187,6 @@ class EntityFactoryTests(unittest.TestCase):
       default_class = MockCallable(response='generic'),
       extension_module = MockObject(Bugs = MockCallable(response='Bug')))
     self.assertEqual(factory('Bugs')(),'Bug')
-
-
-class QueryWrapperTests(unittest.TestCase):
-  "Test paritaling class method, gettattr only works for c,q,e + __call__ correctly wraps"
-
-  def setUp(self):
-    self.mock_client = MockObject(request=MockCallable(response=[{'Id':1}]))
-    self.mock_factory = MockCallable(response=MockCallable(response='wrapped'))
-
-  def test_entityCorrectWrapping(self):
-    'Entity type is passed to factory'
-    self.mock_factory = lambda x: MockCallable(response=x)
-    query_wrapper = api.QueryEntityWrapper(
-      self.mock_client,'acid','Bugs',self.mock_factory)
-    response = query_wrapper.query()
-    self.assertEqual(next(response),'Bugs')
-
-  def test_delegateQueryMethods(self):
-    'Calls to query,edit and create are passed to query'
-    mock_query_class = MockCallable(response=MockObject(
-      edit=MockCallable(),create=MockCallable(),query=MockCallable()))
-
-    query_wrapper = api.QueryEntityWrapper(
-      self.mock_client,'acid','Bugs',query_class = mock_query_class)
-
-    query_wrapper.query(arg1=1)
-    query_wrapper.edit(arg2=2)
-    query_wrapper.create(arg3=3)
-    self.assertEqual(query_wrapper._query.query.last_call.kwargs['arg1'],1)
-    self.assertEqual(query_wrapper._query.edit.last_call.kwargs['arg2'],2)
-    self.assertEqual(query_wrapper._query.create.last_call.kwargs['arg3'],3)
-
-  def test_ErrorOnNonQueryMethods(self):
-    'Errors on calls to methods that dont exist on wrapped query'
-    query_wrapper = api.QueryEntityWrapper(self.mock_client,'acid','Bugs')
-    self.assertRaises(AttributeError,
-      lambda m: getattr(query_wrapper,m),'nonMethod')
-
-  def test_partialContruct(self):
-    'Use case: user can partial class method constructor'
-    partial = functools.partial(api.QueryEntityWrapper.construct,self.mock_factory)
-    query_wrapper = partial(self.mock_client,'acid','Bugs')
-    self.assertEqual(next(query_wrapper.query()),'wrapped')
 
 
 if __name__ == "__main__":
