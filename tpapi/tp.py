@@ -19,8 +19,17 @@ class EntityResponse(utils.JsonResponse):
 
 
 class TPClient(object):
-  'Takes questions and puts them to TP'
+  """
+  Interface to Target Process Rest API.
+  Delegates heavy lifting to requester
+  and aims to returns a nicely parsed objects.
+  """
   def __init__(self, url, requester):
+    """
+    :params url url for tp api service
+    :params requester callable to delegate http request to
+    :params response_format callable to parse http request response
+    """
     self.BASEURL = url
     self.requester = requester
 
@@ -51,16 +60,23 @@ class TPClient(object):
 
 
 class Response(object):
-  """Iterator over an Entity list.
-  ransparently handles pagination of resources and 
-  keeps enitity data up todate by resending http request on iter
+  """Iterator over an Entity list
+  Transparently handles pagination of resources and 
+  keeps enitity data up todate by resending http request per __iter__ call
   """
   def __init__(self,init_f,next_f,limit):
+    """
+    :params init_f callback for initial url query
+    :params next_f callback for additional pagination urls
+    :params limit Max number of objects of entities to returned via iteration
+
+    """
     self.init_response = init_f
     self.limit = limit
     self.next = next_f
 
   def __iter__(self):
+    "TODO: improve limit implementation"
     item,url = self.init_response()
     limit = self.limit
     for x in range((self.limit/25)+1):
@@ -74,7 +90,6 @@ class Response(object):
 
 class Query(object):
   """Adapter class for putting requests to TPClients
-
   """
   def __init__(self, tp_client, project_acid, entity_type):
     """
