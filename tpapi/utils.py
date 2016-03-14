@@ -2,15 +2,13 @@ import json, urllib
 import requests
 from collections import namedtuple
 
-# RESPONSE FORMATS
-TP_RESPONSE = namedtuple('TPResponse',['Items','NextUrl'])
-
 class JsonResponse(object):
   """Simple wrapper to encapsulate reponse format"""
   def __call__(self,response):
     """Parse Response to return iterator of items and optional next url"""
     d = response.json()
-    return TP_RESPONSE(d.get('Items',(d,)),d.get('Next'))
+    # Return tuple of items + url for next request
+    return (d.get('Items',(d,)),d.get('Next'))
   def __str__(self):
     """String to supply to request format arg"""
     return 'json'
