@@ -18,8 +18,9 @@ class BinaryResponse(object):
 
 # HTTP Work
 class HTTPRequester(object):
-  def __init__(self,auth=None):
+  def __init__(self,response_format,auth=None):
     self.auth = auth
+    self.default_response_format = response_format
 
   def _encode_params(self,params):
     # Transfer param data into query string as requests.py
@@ -39,8 +40,9 @@ class HTTPRequester(object):
     param_string ="&".join(["%s=%s"%(k,v) for k,v in result.iteritems()])
     return "?" + urllib.quote(param_string,safe='=&')
 
-  def __call__(self, url, response_format, method='get', params='', data=None ):
-    # TODO: Remove param default, its provided up stream
+  def __call__(self, url, params,method='get', data=None,response_format=None ):
+    if not response_format:
+      response_format = self.default_response_format
     if params:
       # if params aren't specified and included in url
       # we assume format is already included and do not add 
@@ -51,7 +53,6 @@ class HTTPRequester(object):
       params = ''
 
     print url+params
-
     if method == 'get':
       response = requests.request(method,url+params,auth=self.auth)
     if method == 'post':

@@ -22,27 +22,31 @@ class TPClient(object):
   'Takes questions and puts them to TP'
   def __init__(self, url, requester):
     self.BASEURL = url
-    self.requester = requester 
+    self.requester = requester
 
-  def _request(self, method, url, params,  data=None,
-              base=True, response_format=JSON):
-    """ Make single request """
+  def _simple_request(self, method, url, data, params,
+                           base=True):
+    "Construct request and delegate to requester"
+    final_url = os.path.join((self.BASEURL*base),url)
+
     return self.requester(
-      url = os.path.join((self.BASEURL*base),url) ,
       method = method,
-      response_format = response_format,
-      params = params, 
-      data = data)
+      url = final_url ,
+      params = params,
+      data = data,)
 
-  def request(self,method,url,data=None,limit=50,**params):
-    """ Return iterator over multi request response """
+  def request(self, method, url, data=None, limit=50,**params):
+    """
+    Returns iterator over paginated response
+    :return :class: tp.Response 
+    """
     init = functools.partial(
-                self._request,
+                self._simple_request,
                 method = method,
                 url = url,
                 params = params,
                 data = data)
-    next_f  = functools.partial(self._request,method='get',params={},base=False)
+    next_f  = functools.partial(self._simple_request,method='get',params={},base=False)
     return Response(init,next_f,limit)
 
 
