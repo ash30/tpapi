@@ -2,14 +2,21 @@ import os
 import functools 
 import utils
 
-# Respons Formats
-JSON = utils.JsonResponse()
-
 """
 Future Todo:
   - Pass entity objects into edits
   - TP client caching
 """
+
+class EntityResponse(utils.JsonResponse):
+  def __init__(self,entity_factory):
+      self.entity_factory = entity_factory
+
+  def __call__(self,response):
+    items,url = super(EntityResponse,self).__call__(response)
+    new_items = [self.entity_factory(i.get('ResourceType','NOENTITYTYPE'))(**i) for i in items]
+    return (new_items,url)
+
 
 class TPClient(object):
   'Takes questions and puts them to TP'

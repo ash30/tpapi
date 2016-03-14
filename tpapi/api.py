@@ -17,25 +17,26 @@ class Project(object):
     >>> proj.Userstories
   """
 
-  def __init__(self,tp_client,project_acid,entity_factory,query_class=EntityQuery):
+  def __init__(self,tp_client,project_acid):
     """
     :param tp.TPclient tp_client: TPclient object
     :param str project_acid: acid string of TargetProcess project:
     """
     self.tp_client = tp_client
     self.project_acid = project_acid
-    self.entity_factory = entity_factory
-    self._query = query_class
-
-  def _create_entity(self,data,entity_type):
-    return self.entity_factory(entity_type)(self,**data)
 
   def __getattr__(self,name):
-    return self._query( self.tp_client,
-                  self.project_acid,
-                  entity_type = name,
-                  entity_class = functools.partial(self._create_entity,entity_type=name))
+    """
+    :raise: EntityNameError if name doesn't match valid TargetProcess Entity
+    """
+    # I wish there was a more efficent way to do this...
+    # Keep dot notation for entity type but not create Query per method call
+    if name not in entities.ALL:
+      raise EntityNameError() 
 
+    return tp.Query(self.tp_client,
+                    self.project_acid,
+                    entity_type = name)
 
 def get_project(project_id, tp_url, auth=None, 
                 entity_factory=DEFAULT_ENTITY_FACTORY):
@@ -51,10 +52,13 @@ def get_project(project_id, tp_url, auth=None,
     By default we return tp.GenericEntity instances 
   :return: :class: tp.Project 
   """
-  client = tp.TPClient(tp_url,utils.HTTPRequester(auth))
+  requester = utils.HTTPRequester(
+    tp.EntityResponse(entity_factory),auth,
+  )
+  client = tp.TPClient(tp_url,requester)
   context = tp.Query(client,project_acid=None,entity_type='Context').query(ids=project_id)
   project_acid = next(context.__iter__())['Acid']
 
-  return Project(client,project_acid,entity_factory)
+  return Project(client,project_acid)
 
 
