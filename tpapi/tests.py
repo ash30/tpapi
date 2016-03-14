@@ -1,6 +1,6 @@
 import unittest, functools
 from collections import namedtuple
-import tp,api
+import tp,api,entities,utils
 
 # MOCKS
 class MockCallable(object):
@@ -20,16 +20,16 @@ class MockObject(object):
 class TPClientTests(unittest.TestCase):
   "Test baseurl behaviour + it creates correct Response instances"
   def test_url_has_base(self):
-    mock_requestor = MockCallable()
+    mock_requestor = MockCallable(response=[[{'Id':1},{'Id':2},{'Id':3}],None])
     base_url       = 'www.baseurl.com'
-    client         = tp.TPClient(base_url,mock_requestor)
+    client         = tp.TPClient(base_url,mock_requestor,)
   
     # has base class by default
-    client._request('get',url='bugs',params={})
+    client._simple_request('get',url='bugs',params={},data=None)
     self.assertEqual( 
       mock_requestor.last_call.kwargs.get('url'),base_url+'/bugs')
 
-    client._request('get',url='bugs',base=False,params={})
+    client._simple_request('get',url='bugs',base=False,params={},data=None)
     self.assertEqual(
       mock_requestor.last_call.kwargs.get('url'),'bugs')
 
@@ -106,7 +106,7 @@ class QueryTests(unittest.TestCase):
     query = tp.Query(self.mock_client,'acid','entity')
     self.assertEqual(query._IDUrl(123),'entity/123')
 
-
+# ENTITIES TESTS
 class EntityBaseTests(unittest.TestCase):
   class mock_object(object):
     def __init__(self,**kwargs):
@@ -114,36 +114,38 @@ class EntityBaseTests(unittest.TestCase):
   
   def test_getattr_Tpdata(self):
     'I can retrieve value from TP data cache'
-    i = tp.EntityBase('project_mock',Id=123,data1='a',data2=1,data3=[1,2])
+    i = entities.EntityBase(Id=123,data1='a',data2=1,data3=[1,2])
     self.assertEqual(i.data1,'a')
     self.assertEqual(i.data2,1)
     self.assertEqual(i.data3,[1,2])
   
   def test_getattr_InstanceVar(self):
     'I can retrieve standard variable from instance'
-    i = tp.EntityBase('project_mock',Id=123, data1='a',data2=1,data3=[1,2]) 
-    self.assertEqual(i._project, 'project_mock')
+    i = entities.EntityBase(Id=123, data1='a',data2=1,data3=[1,2]) 
+    self.assertEqual(i.Id,123 )
 
+  """ Currently not needed
   def test_getattr_shadowing(self):
     'If name exists in tpdata and instance, get instance'
-    i = tp.EntityBase('project_mock',_project='not_project',Id=123)
-    self.assertEqual(i._project,'project_mock')
+    i = entities.EntityBase(Id=123)
     self.assertTrue('_project' in i._tpdata)
-    
+  """
+
   def test_setattr_Tpdata(self):
     'I can edit tpdata cache ref'
-    i = tp.EntityBase('project_mock',Id=123,data1='a')
+    i = entities.EntityBase(Id=123,data1='a')
     i.data1 = 'b'
     self.assertEqual(i.data1,'b')
     self.assertEqual(i._tpdata['data1'],'b')
 
   def test_setattr_InstanceVar(self):
     'I can modify normally instance ref'
-    i = tp.EntityBase('project_mock',Id=123,data1='a')
+    i = entities.EntityBase(Id=123,data1='a')
     i._project = 'new_project'
     self.assertEqual(i._project, 'new_project')
     self.assertEqual(i.__dict__['_project'],'new_project')
 
+  @unittest.skip('Feature needs reworking, not latest version')
   def test_sync(self):
     'I can send copy of tp data to update client'
     # To be sucessful, cls needs to call _project for query
@@ -152,14 +154,33 @@ class EntityBaseTests(unittest.TestCase):
     mock_project = self.mock_object(
       Assignables = self.mock_object(edit=MockCallable()))
 
-    i = tp.EntityBase(mock_project,Id=123,data2='a',data3=[1,2])
+    i = entities.EntityBase(Id=123,data2='a',data3=[1,2])
     i.sync()
     spy = mock_project.Assignables.edit
     call = spy.last_call[1] # kwargs that were called
     self.assertEqual(call['Id'],123)
     self.assertEqual(call['data'],"{'data3': [1, 2], 'data2': 'a'}")
 
-# Utils Tests
+
+class EntityFactoryTests(unittest.TestCase):
+  'make sure it finds right class + custom module + illegal class name'
+
+
+  def test_defaultClass(self):
+    'Default class, factory should return given default callable'
+    factory = entities.EntityFactory(
+      default_class = MockCallable(response='class'))
+    self.assertEqual(factory('Bugs')(),'class')
+
+  def test_CustomLookup(self):
+    'factory looks up class name in custom module'
+    factory = entities.EntityFactory(
+      default_class = MockCallable(response='generic'),
+      extension_module = MockObject(Bugs = MockCallable(response='Bug')))
+    self.assertEqual(factory('Bugs')(),'Bug')
+
+
+# Utils Tests, TODO...
 class JsonResponseTests(unittest.TestCase):
   "Make sure it parse json correctly into TP response"
 
@@ -167,26 +188,81 @@ class RequesterTests(unittest.TestCase):
   "Error handling on bad dumps + general call"
 
 # API Tests
-class EntityFactoryTests(unittest.TestCase):
-  'make sure it finds right class + custom module + illegal class name'
-
+class ProjectTests(unittest.TestCase):
   def test_wrongEntity(self):
-    'factory Errors on wrong entity'
-    factory = api.EntityFactory('dummyClass')
-    self.assertRaises(Exception,factory,'test')
+    'Project Errors on wrong entity lookup'
+    project = api.Project('blah','blah')
+    with self.assertRaises(Exception):
+      project.NonEntity
 
-  def test_defaultClass(self):
-    'Default class, factory should return given default callable'
-    factory = api.EntityFactory(
-      default_class = MockCallable(response='class'))
-    self.assertEqual(factory('Bugs')(),'class')
 
-  def test_CustomLookup(self):
-    'factory looks up class name in custom module'
-    factory = api.EntityFactory(
-      default_class = MockCallable(response='generic'),
-      extension_module = MockObject(Bugs = MockCallable(response='Bug')))
-    self.assertEqual(factory('Bugs')(),'Bug')
+# Integration Tests
+class IntegrationTests(unittest.TestCase):
+  # We mock at request.py and our actual util requester
+  # This is so we can still test the entity creating requester subclass
+  class MockRequester(utils.HTTPRequester):
+    class MockRequest(object):
+      "Mock request.py object, provided so response.json in EntityResponse"
+      def __init__(self,mock_response):
+        self.mock_response = mock_response 
+      def json(self):
+        return self.mock_response
+
+    def __init__(self,response_format,mock_response):
+      super(IntegrationTests.MockRequester,self).__init__(response_format)
+      self.mock_response = self.MockRequest(mock_response)
+    def __call__(self,*args,**kwargs):
+      self.last_call = (args,kwargs) # Record last call for inspection
+      return self.default_response_format(self.mock_response)
+
+  def setup_mockProject(self,http_response):
+    # setup mocked client
+    mock_requester = self.MockRequester(
+      tp.EntityResponse(api.DEFAULT_ENTITY_FACTORY),http_response)
+
+    test_client = tp.TPClient(
+      url = 'baseurl',
+      requester = mock_requester
+    )
+    test_acid = 'TESTACID'
+    return api.Project(test_client,test_acid)
+
+  def test_query_request(self):
+    # Create project and sent request
+    project = self.setup_mockProject(
+      {'Items':[{"Id":123,"Name":"OnlyBug","ResourceType":"Bug"}]})
+    [x for x in project.Bugs.query()]
+
+    # Make sure request was correct
+    request_kwargs = project.tp_client.requester.last_call[1]
+    self.assertEqual(request_kwargs['params']['acid'],'TESTACID')
+    self.assertEqual(request_kwargs['method'],'get')
+    self.assertEqual(request_kwargs['url'],'baseurl/Bugs/')
+
+  def test_querySingleEntity(self):
+    # Create project
+    project = self.setup_mockProject(
+      {'Items':[{"Id":123,"Name":"OnlyBug","ResourceType":"Bug"}]})
+    # Get bugs from project
+    import pdb;pdb.set_trace()
+    bugs_test = [x for x in project.Bugs.query()]
+    
+    # Make sure Returned Entity is Correct
+    self.assertEqual(len(bugs_test),1)
+    self.assertEqual(bugs_test[0].Id,123)
+    self.assertEqual(bugs_test[0].Name,"OnlyBug")
+
+  def test_createEntity(self):
+    pass
+
+  def test_createEntityWithEntityReference(self):
+    pass
+
+  def test_editQuery(self):
+    pass
+
+
+
 
 
 if __name__ == "__main__":
