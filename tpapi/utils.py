@@ -66,5 +66,5 @@ class HTTPRequester(object):
     dump = json.dumps(data,default=lambda o:o.toDict())
     return {
       'data':dump,
-      'header': {"content-type":"application/json",
+      'headers': {"content-type":"application/json",
                  "content-length":len(dump)}}
