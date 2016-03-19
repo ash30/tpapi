@@ -57,7 +57,8 @@ def get_project(project_id, tp_url, auth=None,
   )
   client = tp.TPClient(tp_url,requester)
   context = tp.Query(client,project_acid=None,entity_type='Context').query(ids=project_id)
-  project_acid = next(context.__iter__())['Acid']
+  # NEED to implement better ux for single entity queries
+  project_acid = next(context.__iter__()).Acid
 
   return Project(client,project_acid)
 
