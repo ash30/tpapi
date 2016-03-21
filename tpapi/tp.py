@@ -43,7 +43,7 @@ class TPClient(object):
       params = params,
       data = data,)
 
-  def request(self, method, url, data=None, limit=50,**params):
+  def request(self, method, url, data=None, limit=50, **params):
     """
     Returns iterator over paginated response
     :return :class: tp.Response 
