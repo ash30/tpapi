@@ -90,7 +90,6 @@ class EntityFactory(object):
     :return: tp.GenericEntity sub class
     :raise: EntityNameError if name doesn't match valid TargetProcess Entity
     """
-
     # Search for user defined class first
     # else return GenericEntity
     user_class = getattr(self.extension_module,name,None)
@@ -107,9 +106,12 @@ class EntityBase(object):
     super(EntityBase,instance).__setattr__('_tpdata',{})
     return instance 
 
-  def __init__(self,Id,**kwargs):
-    # Every Entity requires ID
-    self.Id = Id
+  def __init__(self,**kwargs):
+    # NOTE: Actually NOT all entities have an ID, just most of them...
+    # Commenting this requirement out for now, but we should inforce Id
+    # in assignables, probably need to instanciate separate class
+    ## Every Entity requires ID
+    # self.Id = Id
     self._tpdata.update(kwargs)
 
   def __setattr__(self,name,val):
