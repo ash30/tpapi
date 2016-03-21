@@ -33,8 +33,7 @@ class TPClient(object):
     self.BASEURL = url
     self.requester = requester
 
-  def _simple_request(self, method, url, data, params,
-                           base=True):
+  def _simple_request(self, method, url, data, base=True, **params):
     "Construct request and delegate to requester"
     final_url = os.path.join((self.BASEURL*base),url)
 
@@ -53,9 +52,9 @@ class TPClient(object):
                 self._simple_request,
                 method = method,
                 url = url,
-                params = params,
-                data = data)
-    next_f  = functools.partial(self._simple_request,method='get',params={},base=False)
+                data = data,
+                **params)
+    next_f  = functools.partial(self._simple_request,method='get',base=False)
     return Response(init,next_f,limit)
 
 
@@ -111,7 +110,7 @@ class Query(object):
     :param data: extra keyword argurments that are used to set entity properties 
     :return: tp.Response
     """
-    resp = self._client.request(
+    resp = self._client._simple_request(
       method = 'post',
       url = self.entity_type,
       data = data,
