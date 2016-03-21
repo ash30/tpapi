@@ -124,7 +124,7 @@ class EntityBase(object):
     if name in self._tpdata:
       return self._tpdata[name]
     else: 
-      return AttributeError()
+      raise AttributeError()
 
   def sync(self):
     """ post changes made entity to server """
