@@ -119,11 +119,13 @@ class Query(object):
 
   def edit(self,entity_id,**data):
     """Edits the properties of an exisitng entity within TargetProcess Project
+    THIS IS CURRENTLY UNSUPPORTED/NEEDS IMPLEMENTING
 
     :param int entity_id: The id of entity
     :param data: extra keyword argurments that are used to set entity properties 
     :return: tp.Response
     """
+    return 0 
     resp = self._client.request(
       method = 'post',
       url = self._IDUrl(entity_id),
