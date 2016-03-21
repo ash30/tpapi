@@ -36,6 +36,7 @@ class TPClientTests(unittest.TestCase):
   def test_correctReponse(self):
     pass
 
+
 class ResponseTests(unittest.TestCase):
   "Response class have to validate continual iter over + limits"
 
@@ -79,27 +80,36 @@ class ResponseTests(unittest.TestCase):
     result = self.create_iter(r,limit=5)
     self.assertEqual(len(result),5)
 
+
 class QueryTests(unittest.TestCase):
-  "Query Tests only have to validate correct use of client"  
-
+  """Query Tests only have to validate correct use of client as
+  Query class is really just an adapter over client
+  """  
   def setUp(self):
-    self.mock_client = MockObject(request=MockCallable(response=[]))
+    "create a mock client"
+    self.mock_client = MockObject(
+      request=MockCallable(response=[]),
+      _simple_request=MockCallable(response=[]),
+    )
 
-  def test_queryEntity(self):
-    "Query submits entity to client call"
+  def test_queryQueryMethod(self):
     query = tp.Query(self.mock_client,'acid','entity')
-    # query
     call = query.query()
     self.assertTrue(
       self.mock_client.request.last_call.kwargs['url'].startswith('entity'))
-    # edit
+
+  @unittest.skip('Feature needs reworking, not latest version')
+  def test_queryEditMethod(self):
+    query = tp.Query(self.mock_client,'acid','entity')
     call = query.edit(entity_id=123)
     self.assertTrue(
       self.mock_client.request.last_call.kwargs['url'].startswith('entity'))
-    # create
+
+  def test_queryCreateMethod(self):
+    query = tp.Query(self.mock_client,'acid','entity')
     call = query.create()
     self.assertTrue(
-      self.mock_client.request.last_call.kwargs['url'].startswith('entity'))
+      self.mock_client._simple_request.last_call.kwargs['url'].startswith('entity'))
 
   def test_queryID(self):
     "Query submits entity+id to client call"
@@ -155,8 +165,7 @@ class EntityBaseTests(unittest.TestCase):
       Assignables = self.mock_object(edit=MockCallable()))
 
     i = entities.EntityBase(Id=123,data2='a',data3=[1,2])
-    i.sync()
-    spy = mock_project.Assignables.edit
+
     call = spy.last_call[1] # kwargs that were called
     self.assertEqual(call['Id'],123)
     self.assertEqual(call['data'],"{'data3': [1, 2], 'data2': 'a'}")
@@ -215,6 +224,9 @@ class IntegrationTests(unittest.TestCase):
       self.last_call = (args,kwargs) # Record last call for inspection
       return self.default_response_format(self.mock_response)
 
+
+  TESTACID='TESTACIDSTR'
+
   def setup_mockProject(self,http_response):
     # setup mocked client
     mock_requester = self.MockRequester(
@@ -224,10 +236,10 @@ class IntegrationTests(unittest.TestCase):
       url = 'baseurl',
       requester = mock_requester
     )
-    test_acid = 'TESTACID'
-    return api.Project(test_client,test_acid)
+    return api.Project(test_client,self.TESTACID)
 
   def test_query_request(self):
+    "Make sure query urls are following the basic pattern of GET baseurl+entity_type"
     # Create project and sent request
     project = self.setup_mockProject(
       {'Items':[{"Id":123,"Name":"OnlyBug","ResourceType":"Bug"}]})
@@ -235,16 +247,16 @@ class IntegrationTests(unittest.TestCase):
 
     # Make sure request was correct
     request_kwargs = project.tp_client.requester.last_call[1]
-    self.assertEqual(request_kwargs['params']['acid'],'TESTACID')
+    self.assertEqual(request_kwargs['params']['acid'],self.TESTACID)
     self.assertEqual(request_kwargs['method'],'get')
     self.assertEqual(request_kwargs['url'],'baseurl/Bugs/')
 
   def test_querySingleEntity(self):
+    "I can create a query for an entity with a Target Process Project"
     # Create project
     project = self.setup_mockProject(
       {'Items':[{"Id":123,"Name":"OnlyBug","ResourceType":"Bug"}]})
     # Get bugs from project
-    import pdb;pdb.set_trace()
     bugs_test = [x for x in project.Bugs.query()]
     
     # Make sure Returned Entity is Correct
@@ -252,8 +264,37 @@ class IntegrationTests(unittest.TestCase):
     self.assertEqual(bugs_test[0].Id,123)
     self.assertEqual(bugs_test[0].Name,"OnlyBug")
 
+  def test_queryEntityWithoutID(self):
+    "I can create a query for entities (like Contexts) that don't have an ID"
+    # Create project
+    project = self.setup_mockProject(
+      {'Items':[{"Name":"OnlyBug","ResourceType":"Context"}]})
+    # Get bugs from project
+    entities = [x for x in project.Bugs.query()]
+    
+    # Make sure Returned Entity is Correct and with ID 
+    self.assertEqual(len(entities),1)
+    self.assertEqual(entities[0].Name,"OnlyBug")
+    with self.assertRaises(AttributeError) as e:
+      entities[0].Id 
+
   def test_createEntity(self):
-    pass
+    "I can create a query to create an entity within a TP Project"
+    name_test_str = 'test_name'
+    description_test_str = 'test_description'
+
+    # Create project
+    project = self.setup_mockProject(
+      {'Items':[{"Id":123,"Name":"OnlyBug","ResourceType":"Bug"}]})
+
+    # TEST if url query is bas/entity?params AND also request = post
+    project.Bugs.create(Name=name_test_str,Description=description_test_str)
+    request_kwargs = project.tp_client.requester.last_call[1]
+    print request_kwargs
+    self.assertEqual(request_kwargs['method'],'post')
+    self.assertEqual(request_kwargs['params']['acid'],self.TESTACID)
+    self.assertEqual(request_kwargs['data']['Name'],name_test_str)
+    self.assertEqual(request_kwargs['data']['Description'],description_test_str)
 
   def test_createEntityWithEntityReference(self):
     pass
