@@ -1,4 +1,4 @@
-import tp, utils, entities
+import client, utils, entities
 import functools, itertools, urllib
 
 # API BEGINS 
@@ -26,7 +26,7 @@ class Project(object):
     if name not in entities.ALL:
       raise EntityNameError() 
 
-    return tp.Query(self.tp_client,
+    return client.Query(self.tp_client,
                     self.project_acid,
                     entity_type = name)
 

@@ -1,6 +1,6 @@
 import unittest, functools
 from collections import namedtuple
-import tp,api,entities,utils
+import client,api,entities,utils
 
 # MOCKS
 class MockCallable(object):
@@ -22,14 +22,14 @@ class TPClientTests(unittest.TestCase):
   def test_url_has_base(self):
     mock_requestor = MockCallable(response=[[{'Id':1},{'Id':2},{'Id':3}],None])
     base_url       = 'www.baseurl.com'
-    client         = tp.TPClient(base_url,mock_requestor,)
+    tpclient         = client.TPClient(base_url,mock_requestor,)
   
     # has base class by default
-    client._simple_request('get',url='bugs',params={},data=None)
+    tpclient._simple_request('get',url='bugs',params={},data=None)
     self.assertEqual( 
       mock_requestor.last_call.kwargs.get('url'),base_url+'/bugs')
 
-    client._simple_request('get',url='bugs',base=False,params={},data=None)
+    tpclient._simple_request('get',url='bugs',base=False,params={},data=None)
     self.assertEqual(
       mock_requestor.last_call.kwargs.get('url'),'bugs')
 
@@ -41,7 +41,7 @@ class ResponseTests(unittest.TestCase):
   "Response class have to validate continual iter over + limits"
 
   def create_iter(self,init,limit):
-    response = tp.Response(init,lambda url:url,limit)
+    response = client.Response(init,lambda url:url,limit)
     return [ x for x in response]
 
   def test_simpleIter(self):
@@ -93,27 +93,27 @@ class QueryTests(unittest.TestCase):
     )
 
   def test_queryQueryMethod(self):
-    query = tp.Query(self.mock_client,'acid','entity')
+    query = client.Query(self.mock_client,'acid','entity')
     call = query.query()
     self.assertTrue(
       self.mock_client.request.last_call.kwargs['url'].startswith('entity'))
 
   @unittest.skip('Feature needs reworking, not latest version')
   def test_queryEditMethod(self):
-    query = tp.Query(self.mock_client,'acid','entity')
+    query = client.Query(self.mock_client,'acid','entity')
     call = query.edit(entity_id=123)
     self.assertTrue(
       self.mock_client.request.last_call.kwargs['url'].startswith('entity'))
 
   def test_queryCreateMethod(self):
-    query = tp.Query(self.mock_client,'acid','entity')
+    query = client.Query(self.mock_client,'acid','entity')
     call = query.create()
     self.assertTrue(
       self.mock_client._simple_request.last_call.kwargs['url'].startswith('entity'))
 
   def test_queryID(self):
     "Query submits entity+id to client call"
-    query = tp.Query(self.mock_client,'acid','entity')
+    query = client.Query(self.mock_client,'acid','entity')
     self.assertEqual(query._IDUrl(123),'entity/123')
 
 # ENTITIES TESTS
@@ -243,9 +243,9 @@ class IntegrationTests(unittest.TestCase):
   def setup_mockProject(self,http_response):
     # setup mocked client
     mock_requester = self.MockRequester(
-      tp.EntityResponse(api.DEFAULT_ENTITY_FACTORY),http_response)
+      client.EntityResponse(api.DEFAULT_ENTITY_FACTORY),http_response)
 
-    test_client = tp.TPClient(
+    test_client = client.TPClient(
       url = 'baseurl',
       requester = mock_requester
     )
