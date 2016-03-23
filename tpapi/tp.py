@@ -21,14 +21,12 @@ class EntityResponse(utils.JsonResponse):
 class TPClient(object):
   """
   Interface to Target Process Rest API.
-  Delegates heavy lifting to requester
-  and aims to returns a nicely parsed objects.
+  Aims to returns a nicely parsed objects.
   """
   def __init__(self, url, requester):
     """
-    :params url url for tp api service
-    :params requester callable to delegate http request to
-    :params response_format callable to parse http request response
+    :param url: url for tp api service
+    :param requester: callable to delegate http request to
     """
     self.BASEURL = url
     self.requester = requester
@@ -59,15 +57,16 @@ class TPClient(object):
 
 
 class Response(object):
-  """Iterator over an Entity list
-  Transparently handles pagination of resources and 
-  keeps enitity data up todate by resending http request per __iter__ call
+  """Iterator over an Entity list, transparently handles pagination of resources and 
+  keeps entity data updated by resending http request per __iter__ call.
+
+  You shouldn't need to directly instanciate, these are created and returned by the TPClient
   """
   def __init__(self,init_f,next_f,limit):
     """
-    :params init_f callback for initial url query
-    :params next_f callback for additional pagination urls
-    :params limit Max number of objects of entities to returned via iteration
+    :param init_f: callback for initial url query
+    :param next_f: callback for additional pagination urls
+    :param limit: Max number of objects of entities to returned via iteration
 
     """
     self.init_response = init_f

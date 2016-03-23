@@ -4,7 +4,7 @@ def quickstart():
   """
   Setup a project
 	>>> from requests.auth import HTTPBasicAuth
-	>>> project = tpapi.Project(
+	>>> project = tpapi.get_project(
 	>>>   project_id=1234,
 	>>>   tp_url='yourCompany.Targetproces/api/v1/',
 	>>>   auth=HTTPBasicAuth('uname','pword'),
@@ -12,7 +12,9 @@ def quickstart():
 
   Most of the times you will be instanciating a project object to get started 
   as its a convenient way to make requests within the context of a single TP project.
-  If Authentication is required you can use the BasicAuth from requests
+  We use the helper function 'get_project' to instanciate the project correctly for us.
+
+  If Authentication is required you can use the BasicAuth from requests.
 
   Creating 
       >>> new_bug = project.Bugs.create(
@@ -39,12 +41,6 @@ def quickstart():
 
   Tpapi provides an additional parameter in the form of 'limit' and this is just a safe guard to ensure you don't kill your network.
 
-  Editing
-	  >>> new_bug.Name = "New Name" # editing
-	  >>> new_bug..Description = "New Description"
-	  >>> bug2.sync()
-
-  There is a rough api in place to edit entites but its mostly unused/untest at this point...
   """
 
 

@@ -69,8 +69,7 @@ ALL = [
 class EntityNameError(Exception): pass 
 
 class EntityFactory(object):
-  """Default implementation of Entity Class Factory,
-    When called, will instanciate tp.GenericEntity sub class based on entity string"""
+  """Default implementation of Entity Class Factory"""
 
   def __init__(self,default_class, extension_module=None):
     """
@@ -83,7 +82,7 @@ class EntityFactory(object):
     self.default_class = default_class
 
   def __call__(self,name):
-    """Looks up class name in extension module and returns class, else 
+    """Looks up entity name in extension module and returns class, else 
     returns default class 
 
     :param name: name of Target Process Entity
@@ -100,6 +99,7 @@ class EntityFactory(object):
 
 
 class EntityBase(object):
+  """Base class for TP Entities, provides simple object interface for the entity data"""
   def __new__(cls,*args,**kwargs):
     "Setup _tpdata before instance access controls"
     instance = object.__new__(cls)

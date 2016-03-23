@@ -7,14 +7,6 @@ DEFAULT_ENTITY_FACTORY = entities.EntityFactory(entities.GenericEntity)
 class Project(object):
   """ Projects are Query Factories, setting up query instances 
   with desired client,acid_str and entity type via an attribute lookup interface
-
-  The attribute string is identical to the TargetProcess reference documentation
-  so be aware of capitalisation.
-
-  Usage::
-    >>> proj = Project(acid,client)
-    >>> proj.Bugs
-    >>> proj.Userstories
   """
 
   def __init__(self,tp_client,project_acid):
