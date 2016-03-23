@@ -211,19 +211,32 @@ class IntegrationTests(unittest.TestCase):
   # This is so we can still test the entity creating requester subclass
   class MockRequester(utils.HTTPRequester):
     class MockRequest(object):
-      "Mock request.py object, provided so response.json in EntityResponse"
+      "Mock request.py object"
       def __init__(self,mock_response):
         self.mock_response = mock_response 
       def json(self):
         return self.mock_response
+      def raise_for_status(self):
+        return 0
 
     def __init__(self,response_format,mock_response):
       super(IntegrationTests.MockRequester,self).__init__(response_format)
+      # We add some extra attributes to inspect later
       self.mock_response = self.MockRequest(mock_response)
+      self.last_call=None
+      self.final_url=None
+      self.post_data=None
     def __call__(self,*args,**kwargs):
       self.last_call = (args,kwargs) # Record last call for inspection
-      return self.default_response_format(self.mock_response)
-
+      return super(IntegrationTests.MockRequester,self).__call__(*args,**kwargs)
+    #MOCKED out methods 
+    def get(self,url,data):
+      self.final_url = url
+      return self.mock_response
+    def post(self,url,data):
+      self.final_url = url
+      self.post_data = data
+      return self.mock_response
 
   TESTACID='TESTACIDSTR'
 
@@ -284,17 +297,27 @@ class IntegrationTests(unittest.TestCase):
     description_test_str = 'test_description'
 
     # Create project
-    project = self.setup_mockProject(
-      {'Items':[{"Id":123,"Name":"OnlyBug","ResourceType":"Bug"}]})
+    project = self.setup_mockProject({'Items':[]})
 
     # TEST if url query is bas/entity?params AND also request = post
     project.Bugs.create(Name=name_test_str,Description=description_test_str)
+
+    # Now inspect/test
     request_kwargs = project.tp_client.requester.last_call[1]
-    print request_kwargs
+    # HTTP method should be POST
     self.assertEqual(request_kwargs['method'],'post')
+    # Request should be sent within context of a project hence have and acid value
     self.assertEqual(request_kwargs['params']['acid'],self.TESTACID)
+    # Request should be passed keyword args from query 
     self.assertEqual(request_kwargs['data']['Name'],name_test_str)
     self.assertEqual(request_kwargs['data']['Description'],description_test_str)
+    
+    posted_data = project.tp_client.requester.post_data
+    # We should post the data in json hence need relevant headers
+    self.assertEqual(posted_data.get('headers')["content-type"], "application/json")
+    # Content Length should be correct
+    # TODO: self.assertEqual(post_data.get('headers')["content-length"],...)
+
 
   def test_createEntityWithEntityReference(self):
     pass
