@@ -5,14 +5,12 @@
 
 Welcome to TPapi's documentation!
 =================================
-A Python wrapper library over the TargetProcess REST API - create, query and edit 
-entities within a TargetProcess Project. 
+A Python client library for the Target Process Rest API. Mostly a simple object mapper for entity data
+and takes care of the http requests for you. Entities are returned as Python Objects which can be extended via
+subclassing.
 
-Entities are returned as Python Objects with properties cached in memory. Initial implementation 
-doesn't include cache validation so best not hold onto entity references for too long. 
-
-A mechanism for extending returned entity classes is included, hopefully allowing you to implement
-additional helper methods as needed, see user guide for examples.
+Currently there is support for querying data and creating simple entities without other entity references, with more 
+to come shortly.
 
 User Guide
 ----------
