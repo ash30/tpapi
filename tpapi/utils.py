@@ -1,4 +1,5 @@
-import json, urllib
+import json
+import urllib
 import requests
 from collections import namedtuple
 
@@ -22,23 +23,25 @@ class HTTPRequester(object):
     self.auth = auth
     self.default_response_format = response_format
 
-  def __call__(self, url, params,method='get', data=None,response_format=None ):
+  def __call__(self,method,url,params=None,data=None,response_format=None):
     if not response_format:
       response_format = self.default_response_format
+    if not params:
+      params = dict()
+    if "format=" not in url:
+      params['format'] = str(response_format)
 
-    # if params aren't specified and included in url
-    # we assume format is already included and do not add 
-    # Only TP generated urls will have no params as any basic request
-    # will need to specify an acid value 
-    if params:
-      params = self._encode_params(params) + "&" + "format=%s" % str(response_format) # Add Format class to http args
-    else:
-      params = ''
+    params_str = self._encode_params(params) 
+    final_url = url + ('?' if '?' not in url else '&') + params_str
 
     #Dispatch to correct request
     assert method == 'get' or 'post'
-    response = self.__getattribute__(method)(url+params,self._payload(data))
-    response.raise_for_status()
+    response = self.__getattribute__(method)(final_url,self._payload(data))
+    try:
+      response.raise_for_status()
+    except:
+      print final_url
+      raise
 
     return response_format(response)
   
@@ -72,4 +75,4 @@ class HTTPRequester(object):
 
     # Return quoted/escaped query string
     param_string ="&".join(["%s=%s"%(k,v) for k,v in result.iteritems()])
-    return "?" + urllib.quote(param_string,safe='=&')
+    return urllib.quote(param_string,safe='=&')

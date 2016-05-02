@@ -1,3 +1,4 @@
+import itertools
 ALL = [
 "Assignables",
 "AssignedEfforts",
@@ -65,74 +66,118 @@ ALL = [
 "Workflows",
 ] 
 
-# Exception
-class EntityNameError(Exception): pass 
+def propertyRESTEndpoint(name):
+  # End point names will be different due to pluralisation...
+  # match all but last char of name
+  matches = [endpoint for endpoint in ALL if name[:-1] in endpoint]
+  if matches:
+    return matches[0]
+  else:
+    # Bail,
+    return name 
 
-class EntityFactory(object):
-  """Default implementation of Entity Class Factory"""
-
-  def __init__(self,default_class, extension_module=None):
-    """
-    :param default_class: Default class to return if 
-      name doesn't exist in extension_module
-    :param extension_module: (Optional) 
-      getattr(extension_module,type) should return desired sub class
-    """
-    self.extension_module = extension_module
-    self.default_class = default_class
-
-  def __call__(self,name):
-    """Looks up entity name in extension module and returns class, else 
-    returns default class 
-
-    :param name: name of Target Process Entity
-    :return: tp.GenericEntity sub class
-    :raise: EntityNameError if name doesn't match valid TargetProcess Entity
-    """
-    # Search for user defined class first
-    # else return GenericEntity
-    user_class = getattr(self.extension_module,name,None)
-    if user_class:
-      return user_class
+class ResourceAttribute(object):
+  def __init__(self,name):
+    self.name = name 
+  def __get__(self,inst,cls):
+    data = inst._tpdata.get(self.name)
+    if not data: 
+      return None
+    elif "ResourceType" in data:
+      # Any substancial resource will be missing most of its data
+      # We send another request to return full data for nested entity
+      end_point = propertyRESTEndpoint(data['ResourceType'])
+      url = '/'.join([end_point,str(data['Id'])])
+      return next(cls.TP.request('get',url))
     else:
-      return self.default_class
+      # Trivial Entity, just return data as it *probably* includes all data already
+      return EntityClassFactory(data,cls.TP)(data)
+
+class CollectionAttribute(object):
+  def __init__(self,name):
+    self.name = name
+  def __get__(self,inst,cls):
+    data = inst._tpdata.get(self.name)
+    if data:
+      # Must be trivial collection if data is already included
+      return itertools.imap(lambda resource:EntityClassFactory(resource,cls.TP),data)
+    else:
+      # Is a collection, need to send a proper request
+      end_point = propertyRESTEndpoint(inst.ResourceType)
+      url = '/'.join([end_point,str(inst.Id),self.name])
+      return cls.TP.request('get',url,limit=200)
+
+class ValueAttribute(object):
+  def __init__(self,name):
+    self.name = name
+  def __get__(self,inst,cls):
+    return inst._tpdata.get(self.name)
+
+class ClassCache(object):
+  # We want one class per resource type, memorise class creation
+  def __init__(self,function):
+    self.function = function
+    self.class_cache = {}
+
+  def __call__(self,response,tpclient):
+    resource_type = response.get('ResourceType')
+    entity_class = self.class_cache.get(resource_type)
+
+    if entity_class:
+      return entity_class
+    else:
+      entity_class = self.function(response,tpclient)
+      self.class_cache[resource_type] = entity_class
+      return entity_class 
+  
+@ClassCache
+def EntityClassFactory(response,tpclient):
+  # if not a specific resource, just return generic class
+  if not response.get('ResourceType'):
+    return GenericEntity
+
+  # Make sure every class has a reference to client
+  properties = {'TP':tpclient}
+
+  # Get Entity Definition
+  # Bit of hack, we use internal method in client to retrieve data sans entity wrapping
+  # Response = (list of items,url) hence [0][0]
+  meta = tpclient._get_data('get',"/".join([propertyRESTEndpoint(response['ResourceType']),'meta']),data=None)[0][0]
+  name = meta['Name']
+  
+  # Values
+  for definition in meta['ResourceMetadataPropertiesDescription']['ResourceMetadataPropertiesResourceValuesDescription']['Items']:
+    properties[definition['Name']] = ValueAttribute(definition['Name'])
+
+  # Resources 
+  for definition in meta['ResourceMetadataPropertiesDescription']['ResourceMetadataPropertiesResourceReferencesDescription']['Items']:
+    properties[definition['Name']] = ResourceAttribute(definition['Name'])
+
+  # Collections
+  for definition in meta['ResourceMetadataPropertiesDescription']['ResourceMetadataPropertiesResourceCollectionsDescription']['Items']:
+    properties[definition['Name']] = CollectionAttribute(definition['Name'])
+
+  return type(str(name),(EntityBase,),properties) 
 
 
 class EntityBase(object):
   """Base class for TP Entities, provides simple object interface for the entity data"""
-  def __new__(cls,*args,**kwargs):
-    "Setup _tpdata before instance access controls"
-    instance = object.__new__(cls)
-    super(EntityBase,instance).__setattr__('_tpdata',{})
-    return instance 
 
-  def __init__(self,**kwargs):
+  def __init__(self,data):
     # NOTE: Actually NOT all entities have an ID, just most of them...
     # Commenting this requirement out for now, but we should inforce Id
     # in assignables, probably need to instanciate separate class
     ## Every Entity requires ID
     # self.Id = Id
-    self._tpdata.update(kwargs)
-
-  def __setattr__(self,name,val):
-    if name in self._tpdata:
-      self._tpdata[name] = val
-    else:
-      object.__setattr__(self,name,val)
+    self._tpdata = data
 
   def __getattr__(self,name):
-    if name in self._tpdata:
+    # Most entity classes will have properties for attributes
+    # For the sake of generic entities, we implement this
+    try:
       return self._tpdata[name]
-    else: 
+    except KeyError:
       raise AttributeError()
-
-  def sync(self):
-    """ post changes made entity to server """
-    #TODO: We've got rid of project, need to fix sync method
-    # DO we add acid value to entity object?
-    entitiy_id = self.Id
-    data = self._tpdata.copy()
-    getattr(self._project,'Assignables').edit(Id = entitiy_id,data=str(data))
 
   def toDcit(self):
     return self._tpdata
@@ -142,7 +187,5 @@ class EntityBase(object):
     return "{}({})".format(name,
     ",".join("{}={}".format(k,repr(v)) for k,v in self._tpdata.iteritems()))
 
-
 class GenericEntity(EntityBase):
   pass
-
