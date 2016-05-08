@@ -8,7 +8,7 @@ ALL = [
 "Builds",
 "Comments",
 "Companies",
-"Contexts",
+"Context",
 "CustomActivities",
 "CustomRules",
 "EntityStates",
@@ -132,8 +132,8 @@ class ClassCache(object):
   
 @ClassCache
 def EntityClassFactory(response,tpclient):
-  # if not a specific resource, just return generic class
-  if not response.get('ResourceType'):
+  # Work around a bug, for some reason context meta doesn't return correctly...
+  if response.get('ResourceType') == 'Context':
     return GenericEntity
 
   # Make sure every class has a reference to client
@@ -144,18 +144,21 @@ def EntityClassFactory(response,tpclient):
   # Response = (list of items,url) hence [0][0]
   meta = tpclient._get_data('get',"/".join([propertyRESTEndpoint(response['ResourceType']),'meta']),data=None)[0][0]
   name = meta['Name']
-  
+  property_info = meta['ResourceMetadataPropertiesDescription']
+
   # Values
-  for definition in meta['ResourceMetadataPropertiesDescription']['ResourceMetadataPropertiesResourceValuesDescription']['Items']:
+  for definition in property_info['ResourceMetadataPropertiesResourceValuesDescription']['Items']:
     properties[definition['Name']] = ValueAttribute(definition['Name'])
 
   # Resources 
-  for definition in meta['ResourceMetadataPropertiesDescription']['ResourceMetadataPropertiesResourceReferencesDescription']['Items']:
-    properties[definition['Name']] = ResourceAttribute(definition['Name'])
+  if property_info.get("ResourceMetadataPropertiesResourceReferencesDescription"):
+    for definition in property_info['ResourceMetadataPropertiesResourceReferencesDescription']['Items']:
+      properties[definition['Name']] = ResourceAttribute(definition['Name'])
 
   # Collections
-  for definition in meta['ResourceMetadataPropertiesDescription']['ResourceMetadataPropertiesResourceCollectionsDescription']['Items']:
-    properties[definition['Name']] = CollectionAttribute(definition['Name'])
+  if property_info.get("ResourceMetadataPropertiesResourceCollectionsDescription"):
+    for definition in property_info['ResourceMetadataPropertiesResourceCollectionsDescription']['Items']:
+      properties[definition['Name']] = CollectionAttribute(definition['Name'])
 
   return type(str(name),(EntityBase,),properties) 
 

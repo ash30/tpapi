@@ -50,6 +50,33 @@ class TPClient(object):
 
 
 class TPEntityClient(TPClient):
+  def _get_data(self,method,url,data,base=True,**params):
+    """ Override to ensure all requests come back with ResourceType, 
+        Which is vital in order to create entity instances
+    """
+    data = super(TPEntityClient,self)._get_data(method,url,data,base,**params)
+  
+    # If returning entities and they lack resourceType, modify response
+    if data[0] and not data[0][0].get('ResourceType'):
+      # Sniff the url for ResourceType
+      url_parts = filter(lambda x:x,url.split('/'))
+      guessed_type = None
+      # Test if last url part was ID, in which case take one previous
+      try:
+        float(url_parts[-1])
+        guessed_type = url_parts[-2]
+      except ValueError:
+        guessed_type = url_parts[-1]
+        
+      resource_type = guessed_type
+      new_resources= map(
+        lambda r: dict(list(r.iteritems())+[('ResourceType',resource_type)]),
+        data[0]
+      )
+      data = (new_resources,data[1])
+
+    return data
+
   def request(self,method,url,data=None,limit=50,**params):
     "Extend method to return list of entity instances"
     data = super(TPEntityClient,self).request(method,url,data,limit,**params)
