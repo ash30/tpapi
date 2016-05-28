@@ -190,5 +190,14 @@ class EntityBase(object):
     return "{}({})".format(name,
     ",".join("{}={}".format(k,repr(v)) for k,v in self._tpdata.iteritems()))
 
+  def __eq__(self,other):
+    if hasattr(other,"Id") and hasattr(self,"Id"):
+      return self.Id == other.Id
+    else:
+      return False
+
+  def __hash__(self):
+    return self.Id
+
 class GenericEntity(EntityBase):
   pass

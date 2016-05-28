@@ -36,7 +36,7 @@ class Query(object):
       data = data)
     return resp
 
-  def get(self,entity_type,entity_id='',limit=25,**kwargs):
+  def get(self,entity_type,Id='',limit=25,**kwargs):
     """ Returns an iterator over any matching entities to query within TargetProcess Project
 
     :param int entity_id: (Optional) If provided, return specific TargetProcess Entity
@@ -46,7 +46,7 @@ class Query(object):
     """
     r = self._client.request(
       method = 'get',
-      url = '/'.join([entity_type,str(entity_id)]),
+      url = '/'.join([entity_type,str(Id)]),
       limit = limit,
       **kwargs)
     return r
