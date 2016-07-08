@@ -1,4 +1,11 @@
 import itertools
+
+# Json keys for meta response # 
+PROPERTIES_DEF_KEY = 'ResourceMetadataPropertiesDescription'
+VALUE_DEF_KEY = 'ResourceMetadataPropertiesResourceValuesDescription'
+RESOURCE_DEF_KEY = "ResourceMetadataPropertiesResourceReferencesDescription"
+COLLECTION_DEF_KEY = "ResourceMetadataPropertiesResourceCollectionsDescription"
+
 ALL = [
 "Assignables",
 "AssignedEfforts",
@@ -130,37 +137,37 @@ class ClassCache(object):
       self.class_cache[resource_type] = entity_class
       return entity_class 
   
+
 @ClassCache
 def EntityClassFactory(response,tpclient):
-  # Work around a bug, for some reason context meta doesn't return correctly...
-  if response.get('ResourceType') == 'Context':
+  "Generate Class from entity Meta data endpoint"
+  try:
+    # HACK: Use internal method of client to retrieve data sans entity wrapping
+    # Response = (list of items,next url) hence [0][0]
+    entity_meta = tpclient._get_data(
+      method='get',
+      url="/".join([propertyRESTEndpoint(response['ResourceType']),'meta']),
+      data=None,
+    )[0][0]
+
+    entity_name = meta['Name']
+    entity_property_definitions = meta[PROPERTIES_DEF_KEY]
+  except IndexError,KeyError: # Could not get valid meta description
     return GenericEntity
 
-  # Make sure every class has a reference to client
-  properties = {'TP':tpclient}
+  # Every class has a reference to client... But why not EntityBase??
+  class_properties = {'TP':tpclient}
 
-  # Get Entity Definition
-  # Bit of hack, we use internal method in client to retrieve data sans entity wrapping
-  # Response = (list of items,url) hence [0][0]
-  meta = tpclient._get_data('get',"/".join([propertyRESTEndpoint(response['ResourceType']),'meta']),data=None)[0][0]
-  name = meta['Name']
-  property_info = meta['ResourceMetadataPropertiesDescription']
+  for descriptor_class,property_def_key in zip(
+    [ValueAttribute,ResourceAttribute,CollectionAttribute],
+    [VALUE_DEF_KEY,RESOURCE_DEF_KEY,COLLECTION_DEF_KEY]
+  ):
+    class_properties.update({
+      definition['Name']: descriptor_class(definition['Name']) 
+        for definition in entity_property_definitions.get(property_def_key,[])
+    })
 
-  # Values
-  for definition in property_info['ResourceMetadataPropertiesResourceValuesDescription']['Items']:
-    properties[definition['Name']] = ValueAttribute(definition['Name'])
-
-  # Resources 
-  if property_info.get("ResourceMetadataPropertiesResourceReferencesDescription"):
-    for definition in property_info['ResourceMetadataPropertiesResourceReferencesDescription']['Items']:
-      properties[definition['Name']] = ResourceAttribute(definition['Name'])
-
-  # Collections
-  if property_info.get("ResourceMetadataPropertiesResourceCollectionsDescription"):
-    for definition in property_info['ResourceMetadataPropertiesResourceCollectionsDescription']['Items']:
-      properties[definition['Name']] = CollectionAttribute(definition['Name'])
-
-  return type(str(name),(EntityBase,),properties) 
+  return type(str(entity_name),(EntityBase,),class_properties) 
 
 
 class EntityBase(object):
