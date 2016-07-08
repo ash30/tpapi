@@ -174,9 +174,9 @@ class EntityBase(object):
     # self.Id = Id
     self._tpdata = data
 
+  # Most entity classes will have properties objects for attributes access
+  # We define generic accessors for fallback base class GenericEntity
   def __getattr__(self,name):
-    # Most entity classes will have properties for attributes
-    # For the sake of generic entities, we implement this
     try:
       return self._tpdata[name]
     except KeyError:
@@ -189,6 +189,10 @@ class EntityBase(object):
     name = self.__class__.__name__
     return "{}({})".format(name,
     ",".join("{}={}".format(k,repr(v)) for k,v in self._tpdata.iteritems()))
+  def __setattr__(self,name,value):
+    "All entity classes attributes should be immutable"
+    assert name is '_tpdata', "Cannot mutate Entity instance"
+    super(EntityBase,self).__setattr__(name,value)
 
   def __eq__(self,other):
     if hasattr(other,"Id") and hasattr(self,"Id"):
