@@ -182,13 +182,6 @@ class EntityBase(object):
     except KeyError:
       raise AttributeError()
 
-  def toDcit(self):
-    return self._tpdata
-
-  def __repr__(self):
-    name = self.__class__.__name__
-    return "{}({})".format(name,
-    ",".join("{}={}".format(k,repr(v)) for k,v in self._tpdata.iteritems()))
   def __setattr__(self,name,value):
     "All entity classes attributes should be immutable"
     assert name is '_tpdata', "Cannot mutate Entity instance"
