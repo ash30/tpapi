@@ -170,7 +170,6 @@ class EntityBase(object):
     # NOTE: Actually NOT all entities have an ID, just most of them...
     # Commenting this requirement out for now, but we should inforce Id
     # in assignables, probably need to instanciate separate class
-    ## Every Entity requires ID
     # self.Id = Id
     self._tpdata = data
 
@@ -188,12 +187,18 @@ class EntityBase(object):
     super(EntityBase,self).__setattr__(name,value)
 
   def __eq__(self,other):
+    # For simplicity we only really compare entities with Ids, to my 
+    # knowledge the only entites without Ids are contexts
     if hasattr(other,"Id") and hasattr(self,"Id"):
       return self.Id == other.Id
     else:
       return False
 
+  def __ne__(self,other):
+    return not (self == other)
+
   def __hash__(self):
+    assert 'Id' in self._tpdata, "Can't hash an item without Id" 
     return self.Id
 
 class GenericEntity(EntityBase):
