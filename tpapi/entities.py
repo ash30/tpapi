@@ -153,9 +153,9 @@ def EntityClassFactory(response,tpclient):
       data=None,
     )[0][0]
 
-    entity_name = meta['Name']
-    entity_property_definitions = meta[PROPERTIES_DEF_KEY]
-  except IndexError,KeyError: # Could not get valid meta description
+    entity_name = entity_meta['Name']
+    entity_property_definitions = entity_meta[PROPERTIES_DEF_KEY]
+  except (IndexError,KeyError): # Could not get valid meta description
     return GenericEntity
 
   # Every class has a reference to client... But why not EntityBase??
