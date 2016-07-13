@@ -74,6 +74,7 @@ ALL = [
 ] 
 
 def propertyRESTEndpoint(name):
+  # HACK: Get REST API end point from entity
   # End point names will be different due to pluralisation...
   # match all but last char of name
   matches = [endpoint for endpoint in ALL if name[:-1] in endpoint]
@@ -87,18 +88,20 @@ class ResourceAttribute(object):
   def __init__(self,name):
     self.name = name 
   def __get__(self,inst,cls):
-    data = inst._tpdata.get(self.name)
-    if not data: 
+    initial_response_val = inst._tpdata.get(self.name)
+    if not initial_response_val: 
       return None
-    elif "ResourceType" in data:
+    elif "ResourceType" in initial_response_val:
       # Any substancial resource will be missing most of its data
       # We send another request to return full data for nested entity
-      end_point = propertyRESTEndpoint(data['ResourceType'])
-      url = '/'.join([end_point,str(data['Id'])])
+      end_point = propertyRESTEndpoint(initial_response_val['ResourceType'])
+      url = '/'.join([end_point,str(initial_response_val['Id'])])
       return next(cls.TP.request('get',url))
     else:
-      # Trivial Entity, just return data as it *probably* includes all data already
-      return EntityClassFactory(data,cls.TP)(data)
+      # Trivial Entity
+      # Return data as it *probably* includes all data already
+      trivial_entity_class = EntityClassFactory(initial_response_val, cls.TP)
+      return trivial_entity_class(data=initial_response_val)
 
 class CollectionAttribute(object):
   def __init__(self,name):
