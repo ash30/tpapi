@@ -1,181 +1,154 @@
-import itertools
+import weakref
 
-# Json keys for meta response # 
-PROPERTIES_DEF_KEY = 'ResourceMetadataPropertiesDescription'
-VALUE_DEF_KEY = 'ResourceMetadataPropertiesResourceValuesDescription'
-RESOURCE_DEF_KEY = "ResourceMetadataPropertiesResourceReferencesDescription"
-COLLECTION_DEF_KEY = "ResourceMetadataPropertiesResourceCollectionsDescription"
+# Utils #
+def extract_resourceType_from_uri(uri):
+  assert uri.endswith('meta')
+  return uri.split('/')[-2]
 
-ALL = [
-"Assignables",
-"AssignedEfforts",
-"Assignments",
-"Attachments",
-"Bugs",
-"Builds",
-"Comments",
-"Companies",
-"Context",
-"CustomActivities",
-"CustomRules",
-"EntityStates",
-"EntityTypes",
-"Epics",
-"Features",
-"Generals",
-"GeneralFollowers",
-"GeneralUsers",
-"GlobalSettings",
-"Impediments",
-"InboundAssignables",
-"Iterations",
-"Messages",
-"MessageUids",
-"Milestones",
-"OutboundAssignables",
-"Priorities",
-"Processs",
-"Programs",
-"Projects",
-"ProjectAllocations",
-"ProjectMembers",
-"Relations",
-"RelationTypes",
-"Releases",
-"Requests",
-"Requesters",
-"RequestTypes",
-"Revisions",
-"RevisionFiles",
-"Roles",
-"RoleEfforts",
-"Severities",
-"Tags",
-"Tasks",
-"Teams",
-"TeamAssignments",
-"TeamIterations",
-"TeamMembers",
-"TeamProjects",
-"TeamProjectAllocations",
-"Terms",
-"TestCases",
-"TestCaseRuns",
-"TestPlans",
-"TestPlanRuns",
-"TestRunItemHierarchyLinks",
-"TestSteps",
-"TestStepRuns",
-"Times",
-"Users",
-"UserProjectAllocations",
-"UserStories",
-"Workflows",
-] 
-
-def propertyRESTEndpoint(name):
-  # HACK: Get REST API end point from entity
-  # End point names will be different due to pluralisation...
-  # match all but last char of name
-  matches = [endpoint for endpoint in ALL if name[:-1] in endpoint]
-  if matches:
-    return matches[0]
-  else:
-    # Bail,
-    return name 
-
-class ResourceAttribute(object):
-  def __init__(self,name):
+# Computed properties classes #
+class EntityProperty(object):
+  def __init__(self,name,uri=None,metadata=None):
     self.name = name 
+    self.resourceType_endpoint = extract_resourceType_from_uri(uri) if uri else None
+    self._metadata = metadata
+    if self._metadata: self._metadata['RelUri'] = self.resourceType_endpoint
+
+  def get_meta(self):
+    # return a copy as dict is mutable
+    return self._metadata.copy() if self._metadata else None
+
+class ValueAttribute(EntityProperty):
+  def __get__(self,inst,cls):
+    return inst._tpdata.get(self.name)
+
+  def __set__(self,inst,value):
+    assert isinstance(
+      value,(basestring,int,float)
+    ), "WIP: Value Attributes only supports str,int,float currently"
+    inst._tpdata[self.name] = value
+
+class ResourceAttribute(EntityProperty):
   def __get__(self,inst,cls):
     initial_response_val = inst._tpdata.get(self.name)
     if not initial_response_val: 
       return None
-    elif "ResourceType" in initial_response_val:
-      # Any substancial resource will be missing most of its data
-      # We send another request to return full data for nested entity
-      end_point = propertyRESTEndpoint(initial_response_val['ResourceType'])
-      url = '/'.join([end_point,str(initial_response_val['Id'])])
-      return next(cls.TP.request('get',url))
     else:
-      # Trivial Entity
-      # Return data as it *probably* includes all data already
-      trivial_entity_class = EntityClassFactory(initial_response_val, cls.TP)
-      return trivial_entity_class(data=initial_response_val)
+      # We send another request to return full data for nested entity
+      assert 'Id' in initial_response_val, "Cannot find resource without Id"
+      url = '/'.join([
+        self.resourceType_endpoint,
+        str(initial_response_val['Id'])
+      ])
+      return next(cls.TP.get_entities(url))
 
-class CollectionAttribute(object):
-  def __init__(self,name):
-    self.name = name
+  def __set__(self,inst,value):
+    if not value:
+      inst._tpdata[self.name] = None
+      return
+    # Currently we don't support setting resources to locally made
+    # entities. You must first create the leaf entity and then reference it.
+    try:
+      inst._tpdata[self.name] = {'Id':value.Id}
+    except AttributeError:
+      raise TypeError("Cannot Set Resource Attribute to non Entity")
+
+class CollectionAttribute(EntityProperty):
   def __get__(self,inst,cls):
     data = inst._tpdata.get(self.name)
     if data:
       # Must be trivial collection if data is already included
-      return itertools.imap(lambda resource:EntityClassFactory(resource,cls.TP),data)
+      return [GenericEntity(entity_data) for entity_data in data]
     else:
       # Is a collection, need to send a proper request
-      end_point = propertyRESTEndpoint(inst.ResourceType)
-      url = '/'.join([end_point,str(inst.Id),self.name])
-      return cls.TP.request('get',url,limit=200)
+      url = '/'.join([
+        inst._api_endpoint,
+        str(inst.Id),
+        self.resourceType_endpoint
+      ])
+      return cls.TP.get_entities(url,return_limit=500)
+  # CANNOT SET COLLECTIONS!
 
-class ValueAttribute(object):
-  def __init__(self,name):
-    self.name = name
-  def __get__(self,inst,cls):
-    return inst._tpdata.get(self.name)
+class EntityClassFactory(object):
+  PROPERTIES_DEF_KEY = 'ResourceMetadataPropertiesDescription'
+  PROPERTIES_TYPES = {
+    # VALUE
+      "ResourceMetadataProperties"\
+      "ResourceValuesDescription":ValueAttribute,
+    # RESOURCES
+      "ResourceMetadataProperties"\
+      "ResourceReferencesDescription":ResourceAttribute,
+    # COLLECTIONS
+      "ResourceMetadataProperties"\
+      "ResourceCollectionsDescription":CollectionAttribute,
+  }
 
-class ClassCache(object):
-  # We want one class per resource type, memorise class creation
-  def __init__(self,function):
-    self.function = function
-    self.class_cache = {}
+  def __init__(self,client_delegate):
+    self._generated_classes = {}
+    # Client already holds reference to factory
+    self.client_delegate = weakref.ref(client_delegate)
 
-  def __call__(self,response,tpclient):
-    resource_type = response.get('ResourceType')
-    entity_class = self.class_cache.get(resource_type)
+  def get(self,entity_endpoint,immutable=True):
+    "get entitiy class for api end point, if not available, create it"
+    entity_class = self._generated_classes.get(entity_endpoint,None)
+    if not entity_class:
+      try:
+        client = self.client_delegate();assert client
+        entity_metadata = client.raw_request(
+          url="/".join([entity_endpoint,'meta']),
+        )
+        self._register(
+          entity_endpoint, entity_metadata, client
+        )
+      except ValueError:
+        # Parsing meta data went wrong...
+        self._generated_classes[entity_endpoint] = GenericEntity
+      # Try again now that we've registered something 
+      entity_class = self._generated_classes.get(entity_endpoint,None)
 
-    if entity_class:
-      return entity_class
-    else:
-      entity_class = self.function(response,tpclient)
-      self.class_cache[resource_type] = entity_class
-      return entity_class 
-  
+    if immutable: return entity_class[0]
+    else: return entity_class[1]
 
-@ClassCache
-def EntityClassFactory(response,tpclient):
-  "Generate Class from entity Meta data endpoint"
-  try:
-    # HACK: Use internal method of client to retrieve data sans entity wrapping
-    # Response = (list of items,next url) hence [0][0]
-    entity_meta = tpclient._get_data(
-      method='get',
-      url="/".join([propertyRESTEndpoint(response['ResourceType']),'meta']),
-      data=None,
-    )[0][0]
+  def _register(self,entity_name,metadata,tp_client_reference):
+    class_properties = {
+      "TP":tp_client_reference,
+      "_api_endpoint":entity_name
+    }
+    # Setup Metadata Properties
+    generated_property_objects = {}
+    try:
+      class_name = metadata['Name']
+      property_defintions = metadata[self.PROPERTIES_DEF_KEY]     
 
-    entity_name = entity_meta['Name']
-    entity_property_definitions = entity_meta[PROPERTIES_DEF_KEY]
-  except (IndexError,KeyError): # Could not get valid meta description
-    return GenericEntity
+      for prop_type,matching_descriptor in self.PROPERTIES_TYPES.iteritems(): 
+        for definition in property_defintions.get(prop_type,{}).get('Items',[]):
+          name = str(definition['Name'])
+          generated_property_objects[name] = matching_descriptor(
+            name,uri=definition.get('Uri'),metadata=definition
+          )
+      # Record list of all properties so classes can reflect over
+      class_properties['entity_properties'] = property(
+        lambda self :generated_property_objects.copy()
+      )
+      class_properties.update(generated_property_objects) 
+      
+      # Now create Mutable and Immutable version of entity class
+      mutable_new_class = type(
+        "Mutable" + str(class_name),(MutableEntity,),class_properties
+      )
+      # Immutable class has reference to mutable
+      new_class = type(
+        str(class_name),(EntityBase,),class_properties
+      ) 
+    except KeyError:
+      # ERROR Badly formed meta data, falling back to generic entity
+      new_class = GenericEntity
+      mutable_new_class = None
 
-  # Every class has a reference to client... But why not EntityBase??
-  class_properties = {'TP':tpclient}
-
-  for descriptor_class,property_def_key in zip(
-    [ValueAttribute,ResourceAttribute,CollectionAttribute],
-    [VALUE_DEF_KEY,RESOURCE_DEF_KEY,COLLECTION_DEF_KEY]
-  ):
-    class_properties.update({
-      definition['Name']: descriptor_class(definition['Name']) 
-        for definition in entity_property_definitions.get(property_def_key,[])
-    })
-
-  return type(str(entity_name),(EntityBase,),class_properties) 
-
+    self._generated_classes[entity_name] = (new_class,mutable_new_class)
+    
 
 class EntityBase(object):
   """Base class for TP Entities, provides simple object interface for the entity data"""
-
   def __init__(self,data):
     # NOTE: Actually NOT all entities have an ID, just most of them...
     # Commenting this requirement out for now, but we should inforce Id
@@ -211,5 +184,33 @@ class EntityBase(object):
     assert 'Id' in self._tpdata, "Can't hash an item without Id" 
     return self.Id
 
+  def toDict(self):
+    "Convert Entity to dictionary structure for later serialisation"
+    return self._tpdata
+
 class GenericEntity(EntityBase):
   pass
+
+class MutableEntity(EntityBase):
+  @classmethod
+  def create_from_data(cls,data):
+    inst = cls({})
+    # We set initial data via property interfaces to 
+    # error check content
+    for attr,value in data.iteritems():
+      setattr(inst,attr,value)
+    return inst
+
+  def __init__(self,data):
+    # Special case: if Id == 0, then its local entity
+    data['Id'] = 0
+    super(MutableEntity,self).__init__(data)
+
+  def __setattr__(self,name,value):
+    # Allow setting of class properties as well
+    if name in vars(self.__class__):
+      object.__setattr__(self,name,value)
+    elif name == "_tpdata":
+      super(MutableEntity,self).__setattr__(name,value)
+    else:
+      raise AttributeError("Cannot set non existant entity property '{}'".format(name))
