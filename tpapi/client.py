@@ -102,7 +102,7 @@ class HTTPRequestDispatcher():
 
     yield response
     while next_url:
-      response,next_url = self.single_get_request(next_url)
+      response,next_url = self.single_get_request(next_url,params={})
       yield response
     
   def post_request(self,url,params,message_body,response_format=None):
