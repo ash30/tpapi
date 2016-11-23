@@ -27,13 +27,11 @@ Creating and editing entity still WIP.
 
 	# Get the release
 	release = project.get('Releases',where="Name eq 'Version1'")
-	
-	# Get all assigned bugs
-	current_bugs = list(release.Bugs)
 
 	# Remaining Bug effort for release
-	print sum(map(lambda b:b.TimeRemain,current_bugs))
+	print sum(map(lambda b:b.TimeRemain,release.Bugs))
 
 	# Panic ? 
+
 	# Starting planning hotfix Release
 	new_release = project.create('Release',Name="Version1-Hotfix",Project=project)
