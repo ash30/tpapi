@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(name='tpapi',
-      version='0.3.2',
+      version='0.4',
       description="Small client library for interacting with Target Process Service",
       url='https://github.com/ash30/tpapi',
       author='Ashley Arthur',
